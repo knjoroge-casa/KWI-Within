@@ -130,6 +130,14 @@ export interface LogCardiovascular {
   headache_location: 'frontal' | 'temporal' | 'occipital' | 'whole_head';
 }
 
+export interface LogUrological {
+  urinary_frequency_elevated: boolean;
+  urgency: boolean;
+  leakage: boolean;
+  discomfort_or_burning: boolean;
+  uti_symptoms: boolean;
+}
+
 export interface LogActivity {
   exercised: 'yes' | 'no' | 'planned_but_didnt';
   exercise_types: string[];
