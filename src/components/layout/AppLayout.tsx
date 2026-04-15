@@ -11,9 +11,9 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
       <header className="sticky top-0 z-40 flex items-center justify-between border-b bg-background/95 px-4 py-3 backdrop-blur-md">
         <div className="w-8" />
         <img
-          src="/Logo2.png"
+          src="/KWIHeader.png"
           alt="Logo"
-          className="h-16 w-auto object-contain"
+          className="h-14 object-contain"
         />
         <button
           onClick={() => navigate('/settings')}
