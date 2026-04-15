@@ -13,7 +13,7 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
         <img
           src="/LogoMain.png"
           alt="Logo"
-          className="h-12 object-contain"
+          className="h-16 object-contain"
         />
         <button
           onClick={() => navigate('/settings')}
