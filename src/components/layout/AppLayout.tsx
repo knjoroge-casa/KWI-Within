@@ -13,7 +13,7 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
         <img
           src="/KWIHeader.png"
           alt="Logo"
-          className="h-10 object-contain"
+          className="h-12 object-contain"
         />
         <button
           onClick={() => navigate('/settings')}
