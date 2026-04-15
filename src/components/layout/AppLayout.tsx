@@ -11,7 +11,7 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
       <header className="sticky top-0 z-40 flex items-center justify-between border-b bg-background/95 px-4 py-3 backdrop-blur-md">
         <div className="w-8" />
         <img
-          src="/KWIHeaderM.png"
+          src="/KWIHeader.png"
           alt="Logo"
           className="h-13 object-contain"
         />
