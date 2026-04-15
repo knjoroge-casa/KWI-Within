@@ -18,7 +18,7 @@ export const WeeklyInsightModal = ({ insights }: Props) => {
 
   useEffect(() => {
     const today = new Date();
-    //if (!isMonday(today)) return;
+    if (!isMonday(today)) return;
 
     const lastShown = localStorage.getItem(STORAGE_KEY);
     if (lastShown && isToday(parseISO(lastShown))) return;
