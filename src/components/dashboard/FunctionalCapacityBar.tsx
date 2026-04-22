@@ -3,7 +3,7 @@ import { DailyLog } from '@/data/types';
 export const FunctionalCapacityBar = ({ logs }: { logs: DailyLog[] }) => {
   const last7 = logs.slice(-7);
   const full = last7.filter(l => l.energy?.functional_capacity === 'full').length;
-  const reduced = last7.filter(l => l.energy?.functional_capacity === 'reduced').length;
+  const reduced = last7.filter(l => l.energy?.functional_capacity === 'got_through' || l.energy?.functional_capacity === 'empty').length;
   const rest = last7.filter(l => l.energy?.functional_capacity === 'rest').length;
   const total = last7.length;
 
