@@ -24,6 +24,7 @@ export interface DailyLog {
   energy?: LogEnergy;
   sleep?: LogSleep;
   mood?: LogMood;
+  body?: LogBody;
   appetite?: LogAppetite;
   cycle?: LogCycle;
   fibroid?: LogFibroid;
@@ -37,11 +38,16 @@ export interface DailyLog {
   notes?: string;
 }
 
+export type EnergyLevel = 'dead' | 'low' | 'okay' | 'good' | 'charged';
+
 export interface LogEnergy {
-  energy_level: number;
-  functional_capacity: 'full' | 'reduced' | 'rest';
-  energy_crash_time: 'morning' | 'afternoon' | 'evening' | 'none';
-  rest_helped: 'yes' | 'no' | 'partial' | 'didnt_rest';
+  morning_energy: EnergyLevel | null;
+  midday_energy: EnergyLevel | null;
+  evening_energy: EnergyLevel | null;
+  functional_capacity: 'full' | 'got_through' | 'empty' | 'rest' | null;
+  energy_crash_time: 'none' | 'morning' | 'after_lunch' | 'late_afternoon' | 'evening' | null;
+  rest_helped: 'yes' | 'somewhat' | 'no' | null;
+  energy_level?: number; // legacy compat
 }
 
 export interface LogSleep {
