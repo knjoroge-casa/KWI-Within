@@ -19,7 +19,7 @@ function Chips<T extends string>({
   size = 'md',
 }: {
   value: T | null | undefined;
-  onChange: (v: T) => void;
+  onChange: (v: any) => void;
   options: Opt<T>[];
   size?: 'sm' | 'md';
 }) {
