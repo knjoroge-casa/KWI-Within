@@ -35,35 +35,50 @@ export const placeholderLogs: DailyLog[] = Array.from({ length: 42 }, (_, i) => 
   const capacity = capacityPatterns[i] || 'full';
   const mood = moodPatterns[i] || 3;
 
+  const energyToLevel = (n: number): 'dead' | 'low' | 'okay' | 'good' | 'charged' =>
+    (['dead', 'low', 'okay', 'good', 'charged'] as const)[Math.max(0, Math.min(4, n - 1))];
+  const sleepToQuality = (h: number): 'terrible' | 'poor' | 'okay' | 'good' | 'deep' => {
+    if (h < 5) return 'terrible';
+    if (h < 6) return 'poor';
+    if (h < 7) return 'okay';
+    if (h < 8) return 'good';
+    return 'deep';
+  };
+  const moodEmoji = (m: number): '😔' | '🙁' | '😐' | '🙂' | '😄' =>
+    (['😔', '🙁', '😐', '🙂', '😄'] as const)[Math.max(0, Math.min(4, m - 1))];
+
   const log: DailyLog = {
     id: `log-${daysAgo}`,
     date: d(daysAgo),
     completed: daysAgo > 0,
     energy: {
       energy_level: energy,
-      functional_capacity: capacity,
-      energy_crash_time: energy <= 2 ? 'afternoon' : 'none',
-      rest_helped: capacity === 'rest' ? 'yes' : 'didnt_rest',
+      morning_energy: energyToLevel(energy),
+      midday_energy: energyToLevel(Math.max(1, energy - (energy <= 2 ? 0 : 1))),
+      evening_energy: energyToLevel(Math.max(1, energy - 1)),
+      functional_capacity: capacity === 'reduced' ? 'got_through' : capacity,
+      energy_crash_time: energy <= 2 ? 'after_lunch' : 'none',
+      rest_helped: capacity === 'rest' ? 'yes' : null,
     },
     sleep: {
       hours_slept: sleep,
-      sleep_quality: Math.min(5, Math.max(1, Math.round(sleep - 2))),
+      sleep_quality: sleepToQuality(sleep),
       night_sweats: i % 7 === 0 ? 'mild' : 'none',
-      woke_during_night: sleep < 6 ? 'multiple' : sleep < 7 ? 'once' : 'no',
-      felt_rested: sleep >= 7 ? 'yes' : sleep >= 6 ? 'partial' : 'no',
+      woke_during_night: sleep < 6 ? 'all_night' : sleep < 7 ? 'once' : 'slept_through',
+      felt_rested: sleep >= 7 ? 'yes' : sleep >= 6 ? 'kind_of' : 'no',
     },
     mood: {
       mood_score: mood,
-      anxiety: mood <= 2 ? 'moderate' : mood <= 3 ? 'mild' : 'none',
-      irritability: mood <= 2 ? 'moderate' : 'none',
-      brain_fog: energy <= 2 ? 'moderate' : energy <= 3 ? 'mild' : 'none',
-      memory_gaps: energy <= 2,
-      emotional_sensitivity: mood <= 2,
-      motivation: energy <= 2 ? 'low' : 'normal',
-      screen_behaviour: mood <= 2 ? 'doom_scrolling' : 'normal',
-      social_energy: mood <= 2 ? 'needed_quiet' : 'content_either_way',
-      social_match: 'matched',
-      emotional_eating: mood <= 2,
+      mood_emoji: moodEmoji(mood),
+      anxiety: mood <= 2 ? 'noticeable' : mood <= 3 ? 'hum' : 'none',
+      irritability: mood <= 2 ? 'a_lot' : 'none',
+      brain_fog: energy <= 2 ? 'foggy' : energy <= 3 ? 'cloudy' : 'sharp',
+      memory: energy <= 2 ? 'gaps' : 'fine',
+      motivation: energy <= 2 ? 'struggled' : 'ready',
+      screen_behaviour: mood <= 2 ? 'doom_scroll' : 'normal',
+      social_energy: mood <= 2 ? 'needed_quiet' : 'either_way',
+      social_match: 'yes',
+      emotional_eating: mood <= 2 ? 'a_little' : 'no',
       feeling_like_yourself: mood >= 4 ? 'yes' : mood >= 3 ? 'mostly' : 'not_really',
     },
   };

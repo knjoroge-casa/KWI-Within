@@ -24,6 +24,7 @@ export interface DailyLog {
   energy?: LogEnergy;
   sleep?: LogSleep;
   mood?: LogMood;
+  body?: LogBody;
   appetite?: LogAppetite;
   cycle?: LogCycle;
   fibroid?: LogFibroid;
@@ -37,44 +38,65 @@ export interface DailyLog {
   notes?: string;
 }
 
+export type EnergyLevel = 'dead' | 'low' | 'okay' | 'good' | 'charged';
+
 export interface LogEnergy {
-  energy_level: number;
-  functional_capacity: 'full' | 'reduced' | 'rest';
-  energy_crash_time: 'morning' | 'afternoon' | 'evening' | 'none';
-  rest_helped: 'yes' | 'no' | 'partial' | 'didnt_rest';
+  morning_energy: EnergyLevel | null;
+  midday_energy: EnergyLevel | null;
+  evening_energy: EnergyLevel | null;
+  functional_capacity: 'full' | 'got_through' | 'empty' | 'rest' | null;
+  energy_crash_time: 'none' | 'morning' | 'after_lunch' | 'late_afternoon' | 'evening' | null;
+  rest_helped: 'yes' | 'somewhat' | 'no' | null;
+  energy_level?: number; // legacy compat
 }
 
 export interface LogSleep {
-  hours_slept: number;
-  sleep_quality: number;
-  night_sweats: 'none' | 'mild' | 'severe';
-  woke_during_night: 'no' | 'once' | 'multiple';
-  felt_rested: 'yes' | 'no' | 'partial';
+  hours_slept: number | null;
+  sleep_quality: 'terrible' | 'poor' | 'okay' | 'good' | 'deep' | null;
+  night_sweats: 'none' | 'mild' | 'woke_me' | null;
+  woke_during_night: 'slept_through' | 'once' | 'few_times' | 'all_night' | null;
+  felt_rested: 'yes' | 'kind_of' | 'no' | null;
+}
+
+export interface LogBody {
+  headache: 'none' | 'mild' | 'significant' | 'migraine' | null;
+  headache_location: 'forehead' | 'temples' | 'back' | 'behind_eyes' | 'whole_head' | null;
+  joint_pain: 'none' | 'mild' | 'noticeable' | 'difficult' | null;
+  joint_pain_areas: string[];
+  muscle_aches: 'none' | 'mild' | 'noticeable' | null;
+  morning_stiffness: 'none' | 'loosened' | 'while' | 'midday' | null;
+  pelvic_area: 'none' | 'mild' | 'noticeable' | 'significant' | null;
+  lower_back: 'fine' | 'mild' | 'noticeable' | 'bad' | null;
+  breast_tenderness: 'none' | 'mild' | 'noticeable' | 'painful' | null;
 }
 
 export interface LogMood {
-  mood_score: number;
-  anxiety: 'none' | 'mild' | 'moderate' | 'severe';
-  irritability: 'none' | 'mild' | 'moderate' | 'severe';
-  brain_fog: 'none' | 'mild' | 'moderate' | 'severe';
-  memory_gaps: boolean;
-  emotional_sensitivity: boolean;
-  motivation: 'normal' | 'low' | 'none';
-  screen_behaviour: 'normal' | 'more_than_usual' | 'doom_scrolling' | 'numb';
-  social_energy: 'wanted_people' | 'content_either_way' | 'needed_quiet' | 'avoided_people';
-  social_match: 'matched' | 'more_social_than_wanted' | 'less_social_than_wanted';
-  emotional_eating: boolean;
-  feeling_like_yourself: 'yes' | 'mostly' | 'not_really' | 'not_at_all';
+  mood_emoji: '😔' | '🙁' | '😐' | '🙂' | '😄' | null;
+  mood_score?: number; // legacy compat
+  anxiety: 'none' | 'hum' | 'noticeable' | 'hard_to_shake' | null;
+  irritability: 'none' | 'mild' | 'a_lot' | 'dont_talk' | null;
+  brain_fog: 'sharp' | 'cloudy' | 'foggy' | 'cant_find_words' | null;
+  memory: 'fine' | 'gaps' | 'what_was_i_doing' | null;
+  motivation: 'ready' | 'push' | 'struggled' | 'couldnt_start' | null;
+  feeling_like_yourself: 'yes' | 'mostly' | 'not_really' | 'not_at_all' | null;
+  screen_behaviour: 'normal' | 'more' | 'doom_scroll' | 'numb' | null;
+  social_energy: 'wanted_people' | 'either_way' | 'needed_quiet' | 'antisocial' | null;
+  social_match: 'yes' | 'more_than_wanted' | 'less_than_wanted' | null;
+  emotional_eating: 'no' | 'a_little' | 'yes' | null;
+  // legacy compat
+  memory_gaps?: boolean;
+  emotional_sensitivity?: boolean;
 }
 
 export interface LogAppetite {
-  appetite_score: number;
-  cravings: boolean;
+  appetite: 'none' | 'low' | 'normal' | 'more' | 'couldnt_stop' | null;
+  cravings: ('none' | 'sweet' | 'salty' | 'carbs' | 'everything' | 'specific')[];
   cravings_detail: string;
-  bloating: 'none' | 'mild' | 'moderate' | 'severe';
-  nausea: boolean;
-  bowel_changes: 'none' | 'constipation' | 'diarrhea' | 'both';
+  bloating: 'none' | 'mild' | 'noticeable' | 'uncomfortable' | null;
+  digestion: 'normal' | 'sluggish' | 'unsettled' | 'nausea' | 'both_ends' | null;
   unusual_thirst: boolean;
+  // legacy compat
+  appetite_score?: number;
 }
 
 export interface LogCycle {
@@ -107,14 +129,16 @@ export interface LogMusculoskeletal {
 }
 
 export interface LogSkinHair {
-  hair_shedding_elevated: boolean;
-  scalp_changes: 'none' | 'itching' | 'dryness' | 'tenderness';
-  skin_dryness: 'none' | 'mild' | 'moderate' | 'severe';
-  skin_sensitivity: boolean;
-  hyperpigmentation_changes: boolean;
-  hyperpigmentation_detail: string;
-  nail_changes: boolean;
-  nail_changes_detail: string;
+  skin_today: 'clear' | 'few_spots' | 'breaking_out' | 'cystic' | 'irritated' | null;
+  breakout_locations: string[];
+  skin_feel: 'normal' | 'dry' | 'oily' | 'sensitive' | 'combination' | null;
+  new_skincare: boolean;
+  new_skincare_detail: string;
+  hair_shedding: 'normal' | 'more' | 'a_lot_more' | null;
+  scalp: 'fine' | 'itchy' | 'dry' | 'tender' | null;
+  // legacy compat
+  hair_shedding_elevated?: boolean;
+  scalp_changes?: string;
 }
 
 export interface LogCardiovascular {
@@ -152,11 +176,11 @@ export interface LogActivity {
 }
 
 export interface LogSubstances {
-  alcohol_units: 'none' | '1-2' | '3-4' | '4_plus';
-  alcohol_type: 'wine' | 'beer' | 'spirits' | 'mixed' | 'other';
-  next_morning_feel: 'fine' | 'slightly_off' | 'rough' | 'never_again';
-  caffeine: 'normal' | 'more' | 'less' | 'none';
-  other: string;
+  alcohol_units: 'none' | '1-2' | '3-4' | '4_plus' | null;
+  alcohol_type: 'wine' | 'beer' | 'spirits' | 'mixed' | null;
+  next_morning_feel: 'fine' | 'slightly_off' | 'rough' | 'regrets' | null;
+  caffeine: 'normal' | 'more' | 'less' | 'none' | null;
+  other?: string;
 }
 
 export interface LogWhatsNew {
