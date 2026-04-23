@@ -96,6 +96,7 @@ export interface LogAppetite {
   bloating: 'none' | 'mild' | 'noticeable' | 'uncomfortable' | null;
   digestion: 'normal' | 'sluggish' | 'unsettled' | 'nausea' | 'both_ends' | null;
   unusual_thirst: boolean;
+  bowel_movements: 'none' | 'once_normal' | 'multiple' | 'loose' | 'hard' | 'urgent' | null;
   // legacy compat
   appetite_score?: number;
 }
