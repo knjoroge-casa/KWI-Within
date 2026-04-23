@@ -260,7 +260,7 @@ const DailyLog = () => {
 
       <div className="space-y-2">
         {/* 1. Energy & Function */}
-        <LogSection title="Energy & Function" description="How's the engine running?" defaultOpen>
+        <LogSection title="Energy & Function" description="How's the engine running?">
           <Field label="Morning energy">
             <Chips value={morningEnergy} onChange={setMorningEnergy} options={energyOpts} />
           </Field>
@@ -311,7 +311,7 @@ const DailyLog = () => {
         </LogSection>
 
         {/* 2. Sleep */}
-        <LogSection title="Sleep" description="Did your body actually rest last night?" defaultOpen>
+        <LogSection title="Sleep" description="Did your body actually rest last night?">
           <Field label="Hours slept">
             <div className="flex flex-wrap gap-1.5">
               {[4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5, 8, 8.5, 9].map(h => (
@@ -381,7 +381,7 @@ const DailyLog = () => {
         </LogSection>
 
         {/* 3. Mood & Mind */}
-        <LogSection title="Mood & Mind" description="The inside weather report" defaultOpen>
+        <LogSection title="Mood & Mind" description="The inside weather report">
           <Field label="Overall mood today">
             <div className="flex gap-2">
               {(['😔', '🙁', '😐', '🙂', '😄'] as const).map(e => (
@@ -520,8 +520,8 @@ const DailyLog = () => {
           </Field>
         </LogSection>
 
-        {/* 4. Body — How it feels today */}
-        <LogSection title="Body — How it feels today" description="What's your body saying?">
+        {/* 4. Body Check */}
+        <LogSection title="Body Check — How it feels today" description="What's your body saying?">
           <Field label="Headache or migraine today?">
             <Chips
               value={headache}
@@ -639,7 +639,7 @@ const DailyLog = () => {
               ]}
             />
           </Field>
-          <Field label="Feeling temperature-wise">
+          <Field label="Hot or not?">
             <Chips
               value={perceivedTemp}
               onChange={setPerceivedTemp}
@@ -1086,7 +1086,7 @@ const DailyLog = () => {
             onClick={() => setShowExtra(true)}
             className="flex w-full items-center justify-center gap-1 rounded-lg border border-dashed border-border py-3 text-xs text-primary hover:bg-muted/50 transition-colors"
           >
-            <Plus className="h-3.5 w-3.5" /> Track something else today
+            <Plus className="h-3.5 w-3.5" /> Add more details
           </button>
         )}
 
