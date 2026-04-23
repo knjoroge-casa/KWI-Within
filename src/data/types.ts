@@ -68,6 +68,7 @@ export interface LogBody {
   pelvic_area: 'none' | 'mild' | 'noticeable' | 'significant' | null;
   lower_back: 'fine' | 'mild' | 'noticeable' | 'bad' | null;
   breast_tenderness: 'none' | 'mild' | 'noticeable' | 'painful' | null;
+  perceived_temp: 'comfortable' | 'cold' | 'warm' | 'hot_flushes' | 'sweaty' | 'erratic' | null;
 }
 
 export interface LogMood {
