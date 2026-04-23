@@ -68,6 +68,7 @@ export interface LogBody {
   pelvic_area: 'none' | 'mild' | 'noticeable' | 'significant' | null;
   lower_back: 'fine' | 'mild' | 'noticeable' | 'bad' | null;
   breast_tenderness: 'none' | 'mild' | 'noticeable' | 'painful' | null;
+  perceived_temp: 'comfortable' | 'cold' | 'warm' | 'hot_flushes' | 'sweaty' | 'erratic' | null;
 }
 
 export interface LogMood {
@@ -95,6 +96,7 @@ export interface LogAppetite {
   bloating: 'none' | 'mild' | 'noticeable' | 'uncomfortable' | null;
   digestion: 'normal' | 'sluggish' | 'unsettled' | 'nausea' | 'both_ends' | null;
   unusual_thirst: boolean;
+  bowel_movements: 'none' | 'once_normal' | 'multiple' | 'loose' | 'hard' | 'urgent' | null;
   // legacy compat
   appetite_score?: number;
 }

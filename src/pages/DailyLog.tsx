@@ -172,6 +172,7 @@ const DailyLog = () => {
   const [pelvicArea, setPelvicArea] = useState<'none' | 'mild' | 'noticeable' | 'significant' | null>(null);
   const [lowerBack, setLowerBack] = useState<'fine' | 'mild' | 'noticeable' | 'bad' | null>(null);
   const [breastTenderness, setBreastTenderness] = useState<'none' | 'mild' | 'noticeable' | 'painful' | null>(null);
+  const [perceivedTemp, setPerceivedTemp] = useState<'comfortable' | 'cold' | 'warm' | 'hot_flushes' | 'sweaty' | 'erratic' | null>(null);
 
   /* Cycle */
   const [periodStatus, setPeriodStatus] = useState<'none' | 'started' | 'ongoing' | 'ended' | 'spotting' | null>(null);
@@ -202,6 +203,7 @@ const DailyLog = () => {
   const [bloating, setBloating] = useState<'none' | 'mild' | 'noticeable' | 'uncomfortable' | null>(null);
   const [digestion, setDigestion] = useState<'normal' | 'sluggish' | 'unsettled' | 'nausea' | 'both_ends' | null>(null);
   const [unusualThirst, setUnusualThirst] = useState<'no' | 'yes' | null>(null);
+  const [bowelMovements, setBowelMovements] = useState<'none' | 'once_normal' | 'multiple' | 'loose' | 'hard' | 'urgent' | null>(null);
 
   /* Movement (conditional) */
   const [exercised, setExercised] = useState<'yes' | 'no' | 'planned_but_didnt' | null>(null);
@@ -518,8 +520,8 @@ const DailyLog = () => {
           </Field>
         </LogSection>
 
-        {/* 4. Body — Aches, Tension & Tenderness */}
-        <LogSection title="Body — Aches, Tension & Tenderness" description="What's your body saying?">
+        {/* 4. Body — How it feels today */}
+        <LogSection title="Body — How it feels today" description="What's your body saying?">
           <Field label="Headache or migraine today?">
             <Chips
               value={headache}
@@ -634,6 +636,20 @@ const DailyLog = () => {
                 { value: 'mild', label: 'Mild' },
                 { value: 'noticeable', label: 'Noticeable' },
                 { value: 'painful', label: 'Painful to touch' },
+              ]}
+            />
+          </Field>
+          <Field label="Feeling temperature-wise">
+            <Chips
+              value={perceivedTemp}
+              onChange={setPerceivedTemp}
+              options={[
+                { value: 'comfortable', label: 'Comfortable' },
+                { value: 'cold', label: 'Running cold' },
+                { value: 'warm', label: 'Running warm' },
+                { value: 'hot_flushes', label: 'Hot flushes' },
+                { value: 'sweaty', label: 'Sweaty' },
+                { value: 'erratic', label: 'All over the place' },
               ]}
             />
           </Field>
@@ -905,6 +921,20 @@ const DailyLog = () => {
                 { value: 'unsettled', label: 'Unsettled' },
                 { value: 'nausea', label: 'Nausea' },
                 { value: 'both_ends', label: 'Both ends having a moment' },
+              ]}
+            />
+          </Field>
+          <Field label="How things moved today">
+            <Chips
+              value={bowelMovements}
+              onChange={setBowelMovements}
+              options={[
+                { value: 'none', label: "Didn't go" },
+                { value: 'once_normal', label: 'Once, normal' },
+                { value: 'multiple', label: 'A few times' },
+                { value: 'loose', label: 'Loose' },
+                { value: 'hard', label: 'Hard work' },
+                { value: 'urgent', label: 'Urgent' },
               ]}
             />
           </Field>
