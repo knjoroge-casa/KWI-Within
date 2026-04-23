@@ -4,7 +4,7 @@ import { format } from 'date-fns';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { ChevronDown, Plus } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -231,7 +231,6 @@ const DailyLog = () => {
   const [followupDetail, setFollowupDetail] = useState('');
 
   const [notes, setNotes] = useState('');
-  const [showExtra, setShowExtra] = useState(false);
 
   /* progress: only the three cores count */
   const filledCores = [
@@ -1079,20 +1078,8 @@ const DailyLog = () => {
           </LogSection>
         )}
 
-        {/* "+ Track something else today" */}
-        {!showExtra && (
-          <button
-            type="button"
-            onClick={() => setShowExtra(true)}
-            className="flex w-full items-center justify-center gap-1 rounded-lg border border-dashed border-border py-3 text-xs text-primary hover:bg-muted/50 transition-colors"
-          >
-            <Plus className="h-3.5 w-3.5" /> Add more details
-          </button>
-        )}
-
         {/* 10. Substances */}
-        {showExtra && (
-          <LogSection title="Substances" description="No judgment, just data">
+        <LogSection title="Substances" description="No judgment, just data">
             <Field label="Alcohol last night or today?">
               <Chips
                 value={alcohol}
@@ -1144,7 +1131,6 @@ const DailyLog = () => {
               />
             </Field>
           </LogSection>
-        )}
 
         {/* 11. What's New */}
         <LogSection title="What's new?" description="Something different today?">
