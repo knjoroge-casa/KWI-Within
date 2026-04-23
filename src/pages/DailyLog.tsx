@@ -1079,20 +1079,8 @@ const DailyLog = () => {
           </LogSection>
         )}
 
-        {/* "+ Track something else today" */}
-        {!showExtra && (
-          <button
-            type="button"
-            onClick={() => setShowExtra(true)}
-            className="flex w-full items-center justify-center gap-1 rounded-lg border border-dashed border-border py-3 text-xs text-primary hover:bg-muted/50 transition-colors"
-          >
-            <Plus className="h-3.5 w-3.5" /> Add more details
-          </button>
-        )}
-
         {/* 10. Substances */}
-        {showExtra && (
-          <LogSection title="Substances" description="No judgment, just data">
+        <LogSection title="Substances" description="No judgment, just data">
             <Field label="Alcohol last night or today?">
               <Chips
                 value={alcohol}
