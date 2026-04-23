@@ -1132,7 +1132,6 @@ const DailyLog = () => {
               />
             </Field>
           </LogSection>
-        )}
 
         {/* 11. What's New */}
         <LogSection title="What's new?" description="Something different today?">
