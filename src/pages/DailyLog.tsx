@@ -260,7 +260,7 @@ const DailyLog = () => {
 
       <div className="space-y-2">
         {/* 1. Energy & Function */}
-        <LogSection title="Energy & Function" description="How's the engine running?" defaultOpen>
+        <LogSection title="Energy & Function" description="How's the engine running?">
           <Field label="Morning energy">
             <Chips value={morningEnergy} onChange={setMorningEnergy} options={energyOpts} />
           </Field>
