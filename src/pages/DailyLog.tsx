@@ -4,7 +4,7 @@ import { format } from 'date-fns';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { ChevronDown, Plus } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -231,7 +231,6 @@ const DailyLog = () => {
   const [followupDetail, setFollowupDetail] = useState('');
 
   const [notes, setNotes] = useState('');
-  const [showExtra, setShowExtra] = useState(false);
 
   /* progress: only the three cores count */
   const filledCores = [
