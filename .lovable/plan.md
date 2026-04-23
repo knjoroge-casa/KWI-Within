@@ -1,37 +1,48 @@
 
 
-# Update Section 4: Body — Aches & Tension
+# Add Bowel Movements + Perceived Temperature
 
-Small revision to the agreed Daily Log spec.
+Two small additions, plus a section rename.
 
-## Changes
+## 1. Section 4 rename
 
-**Section 4 title** — rename from *"Body — Aches & Tension"* to **"Body — Aches, Tension & Tenderness"** so the new field has a natural home.
+Current: **"Body — Aches, Tension & Tenderness"**
+New: **"Body — How it feels today"**
 
-**New field: Breast tenderness** — added to section 4, placed after the cycle-adjacent body signals (pelvic + lower back) since it tracks similarly across the cycle.
+Short, plain English, naturally covers aches, tension, tenderness, and temperature. Keeps the warm tone and avoids a list-of-things title.
 
-- **Breast tenderness** — None / Mild / Noticeable / Painful to touch
+(Alternatives if you prefer: *"Body Signals"* / *"Body Check"* / *"Body Today"*. Going with **"Body — How it feels today"** unless you say otherwise.)
 
-## Updated Section 4 — Body — Aches, Tension & Tenderness
+## 2. New field in Section 4: Perceived temperature
 
-*"What's your body saying?" — Pelvic, lower back, and breast tenderness appear for everyone.*
+Placed after **Breast tenderness** (last in section, since it's a whole-body signal not localised).
 
-- **Headache or migraine** — None / Mild headache / Significant headache / Migraine
-  - *(if any)* **Where?** — Forehead / Temples / Back of head / Behind eyes / Whole head
-- **Joint pain** — None / Mild / Noticeable / Difficult to ignore
-  - *(if any)* **Where?** (multi-tap) — Shoulders / Elbows / Wrists / Hips / Knees / Ankles / Lower back / Upper back / Neck
-- **Muscle aches** — None / Mild / Noticeable
-- **Morning stiffness** — None / A little, loosened quickly / Took a while / Still stiff by midday
-- **Pelvic area** — No pain / Mild pressure / Noticeable pain / Significant pain
-- **Lower back** — Fine / Mild / Noticeable / Bad today
-- **Breast tenderness** — None / Mild / Noticeable / Painful to touch
+- **Feeling temperature-wise** — Comfortable / Running cold / Running warm / Hot flushes / Sweaty / All over the place
 
-## Type impact
+Single-tap chips. Covers cold sensitivity, warmth, hot flashes, sweats, and the perimenopause "thermostat is broken" pattern in one question.
 
-`LogBody` interface (to be added in `src/data/types.ts`) gains one field:
+`LogBody` gains:
 ```ts
-breast_tenderness: 'none' | 'mild' | 'noticeable' | 'painful'
+perceived_temp: 'comfortable' | 'cold' | 'warm' | 'hot_flushes' | 'sweaty' | 'erratic' | null
 ```
 
-Everything else in the previously approved spec stands.
+## 3. New field in Appetite & Digestion: Bowel movements
+
+Placed after **Digestion** (natural pairing). Using everyday language — "How things moved" — instead of clinical terminology.
+
+- **How things moved today** — Didn't go / Once, normal / A few times / Loose / Hard work / Urgent
+
+Single tap. Captures frequency + consistency in one go without a Bristol-stool-chart vibe.
+
+`LogAppetite` gains:
+```ts
+bowel_movements: 'none' | 'once_normal' | 'multiple' | 'loose' | 'hard' | 'urgent' | null
+```
+
+## Files to change
+
+- `src/data/types.ts` — add `perceived_temp` to `LogBody`, add `bowel_movements` to `LogAppetite`.
+- `src/pages/DailyLog.tsx` — rename Section 4 title, add Perceived temperature field at end of Body section, add Bowel movements field after Digestion in Appetite section, wire up two new state hooks.
+
+No other sections, no placeholder data changes, no chart impacts.
 
