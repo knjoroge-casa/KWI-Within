@@ -181,6 +181,12 @@ const DailyLog = () => {
   const [cramping, setCramping] = useState<'none' | 'mild' | 'moderate' | 'bad' | null>(null);
   const [cyclePhase, setCyclePhase] = useState<'post_period' | 'mid_cycle' | 'pre_period' | 'not_sure' | null>(null);
 
+  /* Intimacy */
+  const [desire, setDesire] = useState<'high' | 'normal' | 'low' | 'none' | null>(null);
+  const [hadSex, setHadSex] = useState<'no' | 'yes' | 'solo' | null>(null);
+  const [sexFrequency, setSexFrequency] = useState<'once' | 'twice' | 'three_plus' | null>(null);
+  const [sexTimeOfDay, setSexTimeOfDay] = useState<('morning' | 'afternoon' | 'evening' | 'night')[]>([]);
+
   /* Fibroid (conditional) */
   const [pelvicHeaviness, setPelvicHeaviness] = useState<'none' | 'mild' | 'moderate' | 'significant' | null>(null);
   const [abdomenDistended, setAbdomenDistended] = useState<'no' | 'yes' | null>(null);
@@ -721,6 +727,60 @@ const DailyLog = () => {
                 ]}
               />
             </Field>
+          )}
+        </LogSection>
+
+        {/* Intimacy */}
+        <LogSection title="Intimacy" description="Optional — skip if not relevant">
+          <Field label="Desire today">
+            <Chips
+              value={desire}
+              onChange={setDesire}
+              options={[
+                { value: 'high', label: 'High' },
+                { value: 'normal', label: 'Normal' },
+                { value: 'low', label: 'Low' },
+                { value: 'none', label: 'None' },
+              ]}
+            />
+          </Field>
+          <Field label="Did you have sex today?">
+            <Chips
+              value={hadSex}
+              onChange={setHadSex}
+              options={[
+                { value: 'no', label: 'No' },
+                { value: 'yes', label: 'Yes' },
+                { value: 'solo', label: 'Solo' },
+              ]}
+            />
+          </Field>
+          {(hadSex === 'yes' || hadSex === 'solo') && (
+            <>
+              <Field label="How many times?">
+                <Chips
+                  value={sexFrequency}
+                  onChange={setSexFrequency}
+                  options={[
+                    { value: 'once', label: 'Once' },
+                    { value: 'twice', label: 'Twice' },
+                    { value: 'three_plus', label: 'Three+' },
+                  ]}
+                />
+              </Field>
+              <Field label="When? (tap any)">
+                <MultiChips
+                  value={sexTimeOfDay}
+                  onChange={setSexTimeOfDay}
+                  options={[
+                    { value: 'morning', label: 'Morning' },
+                    { value: 'afternoon', label: 'Afternoon' },
+                    { value: 'evening', label: 'Evening' },
+                    { value: 'night', label: 'Night' },
+                  ]}
+                />
+              </Field>
+            </>
           )}
         </LogSection>
 
