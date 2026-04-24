@@ -35,7 +35,15 @@ export interface DailyLog {
   activity?: LogActivity;
   substances?: LogSubstances;
   whatsNew?: LogWhatsNew;
+  intimacy?: LogIntimacy;
   notes?: string;
+}
+
+export interface LogIntimacy {
+  desire: 'high' | 'normal' | 'low' | 'none' | null;
+  had_sex: 'no' | 'yes' | 'solo' | null;
+  frequency: 'once' | 'twice' | 'three_plus' | null;
+  time_of_day: ('morning' | 'afternoon' | 'evening' | 'night')[];
 }
 
 export type EnergyLevel = 'dead' | 'low' | 'okay' | 'good' | 'charged';
