@@ -181,6 +181,12 @@ const DailyLog = () => {
   const [cramping, setCramping] = useState<'none' | 'mild' | 'moderate' | 'bad' | null>(null);
   const [cyclePhase, setCyclePhase] = useState<'post_period' | 'mid_cycle' | 'pre_period' | 'not_sure' | null>(null);
 
+  /* Intimacy */
+  const [desire, setDesire] = useState<'high' | 'normal' | 'low' | 'none' | null>(null);
+  const [hadSex, setHadSex] = useState<'no' | 'yes' | 'solo' | null>(null);
+  const [sexFrequency, setSexFrequency] = useState<'once' | 'twice' | 'three_plus' | null>(null);
+  const [sexTimeOfDay, setSexTimeOfDay] = useState<('morning' | 'afternoon' | 'evening' | 'night')[]>([]);
+
   /* Fibroid (conditional) */
   const [pelvicHeaviness, setPelvicHeaviness] = useState<'none' | 'mild' | 'moderate' | 'significant' | null>(null);
   const [abdomenDistended, setAbdomenDistended] = useState<'no' | 'yes' | null>(null);
