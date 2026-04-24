@@ -730,6 +730,60 @@ const DailyLog = () => {
           )}
         </LogSection>
 
+        {/* Intimacy */}
+        <LogSection title="Intimacy" description="Optional — skip if not relevant">
+          <Field label="Desire today">
+            <Chips
+              value={desire}
+              onChange={setDesire}
+              options={[
+                { value: 'high', label: 'High' },
+                { value: 'normal', label: 'Normal' },
+                { value: 'low', label: 'Low' },
+                { value: 'none', label: 'None' },
+              ]}
+            />
+          </Field>
+          <Field label="Did you have sex today?">
+            <Chips
+              value={hadSex}
+              onChange={setHadSex}
+              options={[
+                { value: 'no', label: 'No' },
+                { value: 'yes', label: 'Yes' },
+                { value: 'solo', label: 'Solo' },
+              ]}
+            />
+          </Field>
+          {(hadSex === 'yes' || hadSex === 'solo') && (
+            <>
+              <Field label="How many times?">
+                <Chips
+                  value={sexFrequency}
+                  onChange={setSexFrequency}
+                  options={[
+                    { value: 'once', label: 'Once' },
+                    { value: 'twice', label: 'Twice' },
+                    { value: 'three_plus', label: 'Three+' },
+                  ]}
+                />
+              </Field>
+              <Field label="When? (tap any)">
+                <MultiChips
+                  value={sexTimeOfDay}
+                  onChange={setSexTimeOfDay}
+                  options={[
+                    { value: 'morning', label: 'Morning' },
+                    { value: 'afternoon', label: 'Afternoon' },
+                    { value: 'evening', label: 'Evening' },
+                    { value: 'night', label: 'Night' },
+                  ]}
+                />
+              </Field>
+            </>
+          )}
+        </LogSection>
+
         {/* 6. Fibroid (conditional) */}
         {showFibroid && (
           <LogSection title="Fibroid check-in" description="Adds to today's body picture">
