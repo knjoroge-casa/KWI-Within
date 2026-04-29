@@ -1861,13 +1861,13 @@ const Records = () => {
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-4 px-4 scrollbar-none">
+      <div className="flex w-full overflow-hidden">
         {TABS.map(t => (
           <button
             key={t.id}
             onClick={() => setActiveTab(t.id)}
             className={cn(
-              'rounded-full px-4 py-1.5 text-xs font-medium whitespace-nowrap transition-colors border shrink-0',
+              'flex-1 min-w-0 rounded-full py-1.5 px-0 text-xs font-medium transition-colors border',
               activeTab === t.id
                 ? 'bg-primary text-primary-foreground border-primary'
                 : 'bg-card border-border hover:bg-muted',
