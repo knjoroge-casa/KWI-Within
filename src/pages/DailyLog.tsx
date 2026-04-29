@@ -715,7 +715,7 @@ const DailyLog = () => {
             </>
           )}
           {(!periodStatus || periodStatus === 'none' || periodStatus === 'ended' || periodStatus === 'spotting') && (
-            <Field label="Cycle phase (optional)">
+            <Field label="Cycle phase">
               <Chips
                 value={cyclePhase}
                 onChange={setCyclePhase}
@@ -731,7 +731,7 @@ const DailyLog = () => {
         </LogSection>
 
         {/* Intimacy */}
-        <LogSection title="Intimacy" description="Optional — skip if not relevant">
+        <LogSection title="Intimacy" description="Feeling sexy today?">
           <Field label="Desire today">
             <Chips
               value={desire}
