@@ -638,7 +638,7 @@ const HealthHistoryTab = () => {
                   <FormInput value={condName} onChange={e => setCondName(e.target.value)} placeholder="e.g. Uterine fibroids" />
                 </FormField>
                 <FormField label="Date diagnosed" required>
-                  <FormInput type="date" value={condDate} onChange={e => setCondDate(e.target.value)} className="appearance-none" />
+                  <FormInput type="date" value={condDate} onChange={e => setCondDate(e.target.value)} className="appearance-none min-h-[2.5rem]" />
                 </FormField>
                 <FormField label="Status">
                   <FormChips value={condStatus} onChange={v => setCondStatus(v as HealthCondition['status'])}
@@ -667,7 +667,7 @@ const HealthHistoryTab = () => {
                   <FormInput value={illName} onChange={e => setIllName(e.target.value)} placeholder="e.g. COVID-19, bad flu, UTI" />
                 </FormField>
                 <FormField label="Start date" required>
-                  <FormInput type="date" value={illStart} onChange={e => setIllStart(e.target.value)} className="appearance-none" />
+                  <FormInput type="date" value={illStart} onChange={e => setIllStart(e.target.value)} className="appearance-none min-h-[2.5rem]" />
                 </FormField>
                 <div className="flex items-center gap-2">
                   <input
@@ -681,7 +681,7 @@ const HealthHistoryTab = () => {
                 </div>
                 {!illOngoing && (
                   <FormField label="End date">
-                    <FormInput type="date" value={illEnd} onChange={e => setIllEnd(e.target.value)} className="appearance-none" />
+                    <FormInput type="date" value={illEnd} onChange={e => setIllEnd(e.target.value)} className="appearance-none min-h-[2.5rem]" />
                   </FormField>
                 )}
                 <FormField label="Severity">
@@ -956,7 +956,7 @@ const LabsTab = () => {
                   <div className="space-y-4">
                     <FormField label="Date" required>
                       <div className="overflow-hidden w-full">
-                        <FormInput type="date" value={labDate} onChange={e => setLabDate(e.target.value)} className="w-full min-w-0 appearance-none" />
+                        <FormInput type="date" value={labDate} onChange={e => setLabDate(e.target.value)} className="w-full min-w-0 appearance-none min-h-[2.5rem]" />
                       </div>
                     </FormField>
                     <FormField label="Lab name">
@@ -1184,7 +1184,7 @@ const ScansTab = () => {
               <div className="space-y-4">
                 <FormField label="Date" required>
                   <div className="overflow-hidden w-full">
-                    <FormInput type="date" value={scanDate} onChange={e => setScanDate(e.target.value)} className="w-full min-w-0 appearance-none" />
+                    <FormInput type="date" value={scanDate} onChange={e => setScanDate(e.target.value)} className="w-full min-w-0 appearance-none min-h-[2.5rem]" />
                   </div>
                 </FormField>
                 <FormField label="Facility">
@@ -1347,7 +1347,7 @@ const MedicationsTab = () => {
                 </FormField>
                 <FormField label="Start date" required>
                   <div className="overflow-hidden w-full">
-                    <FormInput type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full min-w-0 h-full appearance-none" />
+                    <FormInput type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full min-w-0 appearance-none min-h-[2.5rem]" />
                   </div>
                 </FormField>
               </div>
@@ -1514,7 +1514,7 @@ const SupplementsTab = () => {
                 </FormField>
                 <FormField label="Start date" required>
                   <div className="overflow-hidden w-full">
-                    <FormInput type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full min-w-0 h-full appearance-none" />
+                    <FormInput type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full min-w-0 appearance-none min-h-[2.5rem]" />
                   </div>
                 </FormField>
               </div>
@@ -1706,12 +1706,12 @@ const AppointmentsTab = () => {
                   <div className="space-y-4">
                     <FormField label="Date" required>
                       <div className="overflow-hidden w-full">
-                        <FormInput type="date" value={upDate} onChange={e => setUpDate(e.target.value)} className="w-full min-w-0 appearance-none" />
+                        <FormInput type="date" value={upDate} onChange={e => setUpDate(e.target.value)} className="w-full min-w-0 appearance-none min-h-[2.5rem]" />
                       </div>
                     </FormField>
                     <FormField label="Time">
                       <div className="overflow-hidden w-full">
-                        <FormInput type="time" value={upTime} onChange={e => setUpTime(e.target.value)} className="w-full min-w-0 appearance-none" />
+                        <FormInput type="time" value={upTime} onChange={e => setUpTime(e.target.value)} className="w-full min-w-0 appearance-none min-h-[2.5rem]" />
                       </div>
                     </FormField>
                   </div>
