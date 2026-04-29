@@ -1848,7 +1848,7 @@ const AppointmentsTab = () => {
    ================================================================ */
 
 const TABS = [
-  { id: 'health_history', label: 'Health History' },
+  { id: 'health_history', label: 'History' },
   { id: 'labs', label: 'Labs' },
   { id: 'scans', label: 'Scans' },
   { id: 'medications', label: 'Meds' },
