@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { format, parseISO, addDays, subDays } from 'date-fns';
-import { Plus, AlertTriangle, FileText, ChevronDown, Upload } from 'lucide-react';
+import { Plus, AlertTriangle, FileText, ChevronDown, Upload, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
@@ -538,7 +538,7 @@ const SectionHeader = ({
             <Plus className="h-3.5 w-3.5" /> {addLabel}
           </Button>
         </SheetTrigger>
-        <SheetContent side="bottom" className="max-h-[92vh] overflow-y-auto rounded-t-xl pb-8">
+        <SheetContent side="bottom" className="h-[90vh] max-h-[90vh] overflow-y-auto rounded-t-xl pb-8">
           {formContent}
         </SheetContent>
       </Sheet>
@@ -843,6 +843,7 @@ const LabsTab = () => {
   const [labName, setLabName] = useState('');
   const [params, setParams] = useState<LabParam[]>([emptyParam()]);
   const [hasPdf, setHasPdf] = useState(false);
+  const [paramsInfoOpen, setParamsInfoOpen] = useState(false);
 
   const resetForm = () => {
     setTestName(''); setLabDate(''); setLabName('');
@@ -899,7 +900,7 @@ const LabsTab = () => {
               <Plus className="h-3.5 w-3.5" /> Add
             </Button>
           </SheetTrigger>
-          <SheetContent side="bottom" className="max-h-[92vh] overflow-y-auto rounded-t-xl pb-8">
+          <SheetContent side="bottom" className="h-[90vh] max-h-[90vh] overflow-y-auto rounded-t-xl pb-8">
             {addMode === 'choose' && (
               <>
                 <SheetHeader className="mb-6">
@@ -954,15 +955,36 @@ const LabsTab = () => {
                   </FormField>
                   <div className="grid grid-cols-2 gap-3">
                     <FormField label="Date" required>
-                      <FormInput type="date" value={labDate} onChange={e => setLabDate(e.target.value)} />
+                      <div className="overflow-hidden w-full">
+                        <FormInput type="date" value={labDate} onChange={e => setLabDate(e.target.value)} className="w-full min-w-0" />
+                      </div>
                     </FormField>
                     <FormField label="Lab name">
-                      <FormInput value={labName} onChange={e => setLabName(e.target.value)} placeholder="Optional" />
+                      <div className="overflow-hidden w-full">
+                        <FormInput value={labName} onChange={e => setLabName(e.target.value)} placeholder="Optional" className="w-full min-w-0" />
+                      </div>
                     </FormField>
                   </div>
 
                   <div>
-                    <p className="text-xs font-medium text-foreground/70 mb-2">Parameters</p>
+                    <div className="flex items-center gap-1.5 mb-2 relative">
+                      <p className="text-xs font-medium text-foreground/70">Parameters</p>
+                      <button
+                        type="button"
+                        onClick={() => setParamsInfoOpen(v => !v)}
+                        className="text-muted-foreground hover:text-foreground"
+                      >
+                        <Info className="h-3.5 w-3.5" />
+                      </button>
+                      {paramsInfoOpen && (
+                        <>
+                          <div className="fixed inset-0 z-40" onClick={() => setParamsInfoOpen(false)} />
+                          <div className="absolute left-0 top-full mt-1 z-50 w-64 rounded-lg border bg-card p-3 shadow-lg text-xs text-muted-foreground leading-relaxed">
+                            Add each individual measurement from your results. For example, a Full Blood Count would have separate parameters for Haemoglobin, Platelets, WBC etc. Include the reference range from your results sheet so we can track what is in or out of range over time.
+                          </div>
+                        </>
+                      )}
+                    </div>
                     <div className="space-y-3">
                       {params.map((p, i) => (
                         <div key={i} className="rounded-lg border bg-muted/30 p-3 space-y-2">
@@ -1161,10 +1183,14 @@ const ScansTab = () => {
               </FormField>
               <div className="grid grid-cols-2 gap-3">
                 <FormField label="Date" required>
-                  <FormInput type="date" value={scanDate} onChange={e => setScanDate(e.target.value)} />
+                  <div className="overflow-hidden w-full">
+                    <FormInput type="date" value={scanDate} onChange={e => setScanDate(e.target.value)} className="w-full min-w-0" />
+                  </div>
                 </FormField>
                 <FormField label="Facility">
-                  <FormInput value={facility} onChange={e => setFacility(e.target.value)} placeholder="Optional" />
+                  <div className="overflow-hidden w-full">
+                    <FormInput value={facility} onChange={e => setFacility(e.target.value)} placeholder="Optional" className="w-full min-w-0" />
+                  </div>
                 </FormField>
               </div>
               <FormField label="Key findings" required>
@@ -1320,7 +1346,9 @@ const MedicationsTab = () => {
                   <FormInput value={dose} onChange={e => setDose(e.target.value)} placeholder="e.g. 500mg" />
                 </FormField>
                 <FormField label="Start date" required>
-                  <FormInput type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
+                  <div className="overflow-hidden w-full">
+                    <FormInput type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full min-w-0 h-full" />
+                  </div>
                 </FormField>
               </div>
               <FormField label="Frequency">
@@ -1485,7 +1513,9 @@ const SupplementsTab = () => {
                   <FormInput value={dose} onChange={e => setDose(e.target.value)} placeholder="e.g. 25mg" />
                 </FormField>
                 <FormField label="Start date" required>
-                  <FormInput type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
+                  <div className="overflow-hidden w-full">
+                    <FormInput type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full min-w-0 h-full" />
+                  </div>
                 </FormField>
               </div>
               <FormField label="Frequency">
@@ -1658,7 +1688,7 @@ const AppointmentsTab = () => {
               <Plus className="h-3.5 w-3.5" /> Add
             </Button>
           </SheetTrigger>
-          <SheetContent side="bottom" className="max-h-[92vh] overflow-y-auto rounded-t-xl pb-8">
+          <SheetContent side="bottom" className="h-[90vh] max-h-[90vh] overflow-y-auto rounded-t-xl pb-8">
             {sub === 'upcoming' ? (
               <>
                 <SheetHeader className="mb-4">
@@ -1675,10 +1705,14 @@ const AppointmentsTab = () => {
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <FormField label="Date" required>
-                      <FormInput type="date" value={upDate} onChange={e => setUpDate(e.target.value)} />
+                      <div className="overflow-hidden w-full">
+                        <FormInput type="date" value={upDate} onChange={e => setUpDate(e.target.value)} className="w-full min-w-0" />
+                      </div>
                     </FormField>
                     <FormField label="Time">
-                      <FormInput type="time" value={upTime} onChange={e => setUpTime(e.target.value)} />
+                      <div className="overflow-hidden w-full">
+                        <FormInput type="time" value={upTime} onChange={e => setUpTime(e.target.value)} className="w-full min-w-0" />
+                      </div>
                     </FormField>
                   </div>
                   <FormField label="What do you want to discuss?" required>
