@@ -953,7 +953,7 @@ const LabsTab = () => {
                   <FormField label="Test name" required>
                     <FormInput value={testName} onChange={e => setTestName(e.target.value)} placeholder="e.g. Full Blood Count" />
                   </FormField>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-4">
                     <FormField label="Date" required>
                       <div className="overflow-hidden w-full">
                         <FormInput type="date" value={labDate} onChange={e => setLabDate(e.target.value)} className="w-full min-w-0" />
@@ -1181,7 +1181,7 @@ const ScansTab = () => {
                   <FormInput className="mt-2" value={scanTypeOther} onChange={e => setScanTypeOther(e.target.value)} placeholder="Specify type…" />
                 )}
               </FormField>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-4">
                 <FormField label="Date" required>
                   <div className="overflow-hidden w-full">
                     <FormInput type="date" value={scanDate} onChange={e => setScanDate(e.target.value)} className="w-full min-w-0" />
@@ -1341,7 +1341,7 @@ const MedicationsTab = () => {
                 <FormChips value={medType} onChange={v => setMedType(v as 'prescribed' | 'otc')}
                   options={[{ value: 'prescribed', label: 'Prescribed' }, { value: 'otc', label: 'Over the counter' }]} />
               </FormField>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-4">
                 <FormField label="Dose" required>
                   <FormInput value={dose} onChange={e => setDose(e.target.value)} placeholder="e.g. 500mg" />
                 </FormField>
@@ -1508,7 +1508,7 @@ const SupplementsTab = () => {
               <FormField label="Supplement name" required>
                 <FormInput value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Iron Bisglycinate" />
               </FormField>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-4">
                 <FormField label="Dose" required>
                   <FormInput value={dose} onChange={e => setDose(e.target.value)} placeholder="e.g. 25mg" />
                 </FormField>
@@ -1703,7 +1703,7 @@ const AppointmentsTab = () => {
                       <FormInput value={upSpecialty} onChange={e => setUpSpecialty(e.target.value)} placeholder="e.g. Gynaecology" />
                     </FormField>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-4">
                     <FormField label="Date" required>
                       <div className="overflow-hidden w-full">
                         <FormInput type="date" value={upDate} onChange={e => setUpDate(e.target.value)} className="w-full min-w-0" />
