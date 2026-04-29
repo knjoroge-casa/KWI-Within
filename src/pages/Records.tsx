@@ -1851,9 +1851,9 @@ const TABS = [
   { id: 'health_history', label: 'Health History' },
   { id: 'labs', label: 'Labs' },
   { id: 'scans', label: 'Scans' },
-  { id: 'medications', label: 'Medications' },
-  { id: 'supplements', label: 'Supplements' },
-  { id: 'appointments', label: 'Appointments' },
+  { id: 'medications', label: 'Meds' },
+  { id: 'supplements', label: 'Supps' },
+  { id: 'appointments', label: 'Appts' },
 ];
 
 const Records = () => {
