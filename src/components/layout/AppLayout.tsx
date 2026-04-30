@@ -9,11 +9,17 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
   return (
     <div className="min-h-screen bg-background pb-20">
       <header className="h-14 sticky top-0 z-40 flex items-center justify-between border-b bg-background/95 px-4 backdrop-blur-md">
-        <img
-          src="/LogoMain.png"
-          alt="Logo"
-          className="max-h-full w-auto object-contain"
-        />
+        <button
+          onClick={() => navigate('/')}
+          className="h-full flex items-center"
+          aria-label="Go to dashboard"
+        >
+          <img
+            src="/LogoMain.png"
+            alt="Logo"
+            className="max-h-full w-auto object-contain"
+          />
+        </button>
 
         <button
           onClick={() => navigate('/settings')}
