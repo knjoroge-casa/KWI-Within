@@ -320,7 +320,12 @@ const Insights = () => {
         </div>
 
         {pastThoughts.length > 0 && (
-          <div className="rounded-lg border bg-card p-4">
+          <CollapsibleCard
+            title="Previous Thoughts"
+            subtext="Tap to browse past entries"
+            open={openCards.previousThoughts}
+            onToggle={() => setOpenCards(s => ({ ...s, previousThoughts: !s.previousThoughts }))}
+          >
             <div className="flex items-center justify-between mb-4">
               <button
                 onClick={() => setCalendarMonth(m => subMonths(m, 1))}
@@ -367,7 +372,7 @@ const Insights = () => {
                 );
               })}
             </div>
-          </div>
+          </CollapsibleCard>
         )}
       </section>
 
