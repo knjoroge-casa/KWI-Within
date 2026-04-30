@@ -216,7 +216,7 @@ function ChartCard({ title, children }: { title: string; children: ReactNode }) 
 // ── Main component ──
 
 const Insights = () => {
-  const [openCards, setOpenCards] = useState({ thisWeek: false, thisMonth: false, watchList: false });
+  const [openCards, setOpenCards] = useState({ previousThoughts: false, thisWeek: false, thisMonth: false, watchList: false });
   const [selectedDays, setSelectedDays] = useState<30 | 60 | 90>(30);
   const [watchList, setWatchList] = useState<WatchListItem[]>(placeholderWatchList);
   const [thoughts, setThoughts] = useState<ThoughtEntry[]>(placeholderThoughts);
