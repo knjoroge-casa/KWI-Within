@@ -1,10 +1,15 @@
 import { useState } from 'react';
 import type { ReactNode } from 'react';
-import { format, getWeek } from 'date-fns';
-import { ChevronDown, ChevronUp, Pencil } from 'lucide-react';
+import {
+  format, getWeek,
+  startOfMonth, endOfMonth, eachDayOfInterval,
+  startOfWeek, endOfWeek, isSameDay, isSameMonth,
+  addMonths, subMonths,
+} from 'date-fns';
+import { ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Pencil } from 'lucide-react';
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis,
-  Tooltip, Legend, ResponsiveContainer, ReferenceArea,
+  Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -12,10 +17,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { useApp } from '@/contexts/AppContext';
 import {
   energyArcData,
-  sleepChartData,
   capacityWeeklyData,
   symptomFrequencyWithTrends,
   placeholderWatchList,
@@ -107,6 +110,12 @@ function getCurrentWeekInfo() {
   const promptIndex = (weekNum - 1) % 12;
   const weekKey = `${now.getFullYear()}-W${String(weekNum).padStart(2, '0')}`;
   return { promptIndex, promptText: THOUGHTS_PROMPTS[promptIndex], weekKey };
+}
+
+function getCalendarDays(monthDate: Date) {
+  const start = startOfWeek(startOfMonth(monthDate), { weekStartsOn: 1 });
+  const end = endOfWeek(endOfMonth(monthDate), { weekStartsOn: 1 });
+  return eachDayOfInterval({ start, end });
 }
 
 // ── Sub-components ──
@@ -207,16 +216,16 @@ function ChartCard({ title, children }: { title: string; children: ReactNode }) 
 // ── Main component ──
 
 const Insights = () => {
-  const { records } = useApp();
-
-  const [openCards, setOpenCards] = useState({ thisWeek: true, thisMonth: true, watchList: true });
+  const [openCards, setOpenCards] = useState({ thisWeek: false, thisMonth: false, watchList: false });
   const [selectedDays, setSelectedDays] = useState<30 | 60 | 90>(30);
   const [watchList, setWatchList] = useState<WatchListItem[]>(placeholderWatchList);
   const [thoughts, setThoughts] = useState<ThoughtEntry[]>(placeholderThoughts);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [editingThought, setEditingThought] = useState<ThoughtEntry | null>(null);
   const [draftText, setDraftText] = useState('');
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [calendarMonth, setCalendarMonth] = useState(new Date());
+  const [isViewerOpen, setIsViewerOpen] = useState(false);
+  const [viewingThought, setViewingThought] = useState<ThoughtEntry | null>(null);
 
   const { promptIndex, promptText, weekKey } = getCurrentWeekInfo();
   const currentWeekEntry = thoughts.find(t => t.week_key === weekKey);
@@ -227,23 +236,17 @@ const Insights = () => {
   // Chart slices
   const xInterval = Math.floor(selectedDays / 6);
   const energySlice = energyArcData.slice(-selectedDays);
-  const sleepSlice = sleepChartData.slice(-selectedDays);
   const weekCount = selectedDays === 30 ? 4 : selectedDays === 60 ? 9 : 13;
   const capacitySlice = capacityWeeklyData.slice(-weekCount);
 
-  // Lab chart data from records
-  const labData: Record<string, Array<{ date: string; value: number; ref_low: number; ref_high: number; unit: string }>> = {};
-  records.filter(r => r.record_type === 'lab_result').forEach(r => {
-    const name = r.details.test_name as string;
-    if (!labData[name]) labData[name] = [];
-    labData[name].push({
-      date: format(new Date(r.date), 'MMM d'),
-      value: r.details.value as number,
-      ref_low: r.details.ref_low as number,
-      ref_high: r.details.ref_high as number,
-      unit: r.details.unit as string,
-    });
-  });
+  // Calendar
+  const calendarDays = getCalendarDays(calendarMonth);
+  const entryByDate = new Map(
+    thoughts.filter(t => t.week_key !== weekKey).map(t => [t.date, t])
+  );
+  const liveViewingThought = viewingThought
+    ? (thoughts.find(t => t.id === viewingThought.id) ?? viewingThought)
+    : null;
 
   // Handlers
   const dismissWatchItem = (id: string) =>
@@ -282,19 +285,95 @@ const Insights = () => {
       t.id === id ? { ...t, include_in_report: !t.include_in_report } : t
     ));
 
-  const toggleExpanded = (id: string) =>
-    setExpandedIds(prev => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
+  const openViewer = (thought: ThoughtEntry) => {
+    setViewingThought(thought);
+    setIsViewerOpen(true);
+  };
 
   return (
     <div className="space-y-8 pb-4">
 
-      {/* ── SECTION 1: AI INSIGHTS ── */}
+      {/* ── SECTION 1: THOUGHTS ── */}
       <section className="space-y-3">
-        <h2 className="text-xl font-bold">AI Insights</h2>
+        <div>
+          <h2 className="text-xl font-bold">Thoughts</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">A weekly prompt, just for you.</p>
+        </div>
+
+        <div className="rounded-lg border bg-card p-4 space-y-3">
+          <p className="text-sm font-medium leading-relaxed">"{promptText}"</p>
+          {currentWeekEntry ? (
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground leading-relaxed">{currentWeekEntry.text}</p>
+              <button
+                onClick={() => openEditor(currentWeekEntry)}
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <Pencil className="h-3 w-3" /> Edit
+              </button>
+            </div>
+          ) : (
+            <Button variant="outline" size="sm" onClick={() => openEditor()}>
+              Write this week's entry
+            </Button>
+          )}
+        </div>
+
+        {pastThoughts.length > 0 && (
+          <div className="rounded-lg border bg-card p-4">
+            <div className="flex items-center justify-between mb-4">
+              <button
+                onClick={() => setCalendarMonth(m => subMonths(m, 1))}
+                className="rounded-full p-1 hover:bg-muted transition-colors"
+              >
+                <ChevronLeft className="h-4 w-4 text-muted-foreground" />
+              </button>
+              <span className="text-sm font-semibold">{format(calendarMonth, 'MMMM yyyy')}</span>
+              <button
+                onClick={() => setCalendarMonth(m => addMonths(m, 1))}
+                className="rounded-full p-1 hover:bg-muted transition-colors"
+              >
+                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+              </button>
+            </div>
+            <div className="grid grid-cols-7 gap-0.5 mb-1">
+              {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => (
+                <div key={i} className="flex items-center justify-center h-6 text-[10px] font-medium text-muted-foreground">
+                  {d}
+                </div>
+              ))}
+            </div>
+            <div className="grid grid-cols-7 gap-0.5">
+              {calendarDays.map(day => {
+                const inMonth = isSameMonth(day, calendarMonth);
+                const dateKey = format(day, 'yyyy-MM-dd');
+                const entry = entryByDate.get(dateKey);
+                const hasEntry = !!entry && inMonth;
+                return (
+                  <button
+                    key={dateKey}
+                    disabled={!hasEntry}
+                    onClick={() => hasEntry && entry && openViewer(entry)}
+                    className={`flex flex-col items-center justify-center h-9 rounded-md text-xs transition-colors
+                      ${!inMonth ? 'invisible' : ''}
+                      ${hasEntry ? 'hover:bg-primary/10 cursor-pointer' : 'cursor-default'}
+                    `}
+                  >
+                    <span className={hasEntry ? 'font-semibold text-foreground' : 'text-muted-foreground'}>
+                      {format(day, 'd')}
+                    </span>
+                    {hasEntry && <div className="w-1.5 h-1.5 rounded-full bg-primary mt-0.5" />}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </section>
+
+      {/* ── SECTION 2: WITHIN KUI ── */}
+      <section className="space-y-3">
+        <h2 className="text-xl font-bold">Within Kui</h2>
 
         <CollapsibleCard
           title="This Week"
@@ -354,7 +433,7 @@ const Insights = () => {
         </CollapsibleCard>
       </section>
 
-      {/* ── SECTION 2: TRENDS ── */}
+      {/* ── SECTION 3: TRENDS ── */}
       <section className="space-y-3">
         <h2 className="text-xl font-bold">Trends</h2>
 
@@ -384,20 +463,6 @@ const Insights = () => {
               <Line type="monotone" dataKey="morning" stroke="#d97706" strokeWidth={2} dot={false} name="Morning" />
               <Line type="monotone" dataKey="midday" stroke="#e07a5f" strokeWidth={2} dot={false} name="Midday" />
               <Line type="monotone" dataKey="evening" stroke="#6366f1" strokeWidth={2} dot={false} name="Evening" />
-            </LineChart>
-          </ResponsiveContainer>
-        </ChartCard>
-
-        <ChartCard title="Sleep">
-          <ResponsiveContainer width="100%" height={160}>
-            <LineChart data={sleepSlice}>
-              <XAxis dataKey="date" tick={{ fontSize: 9 }} interval={xInterval} />
-              <YAxis yAxisId="left" domain={[3, 10]} tick={{ fontSize: 9 }} width={22} />
-              <YAxis yAxisId="right" orientation="right" domain={[1, 5]} tick={{ fontSize: 9 }} width={22} />
-              <Tooltip contentStyle={{ fontSize: 11 }} />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Line yAxisId="left" type="monotone" dataKey="hours" stroke="#b45309" strokeWidth={2} dot={false} name="Hours slept" />
-              <Line yAxisId="right" type="monotone" dataKey="quality" stroke="#0891b2" strokeWidth={2} dot={false} name="Sleep quality" />
             </LineChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -439,112 +504,6 @@ const Insights = () => {
             ))}
           </div>
         </ChartCard>
-
-        {Object.keys(labData).length > 0 ? (
-          Object.entries(labData).map(([name, entries]) => (
-            <ChartCard key={name} title={`Lab trends — ${name}`}>
-              <ResponsiveContainer width="100%" height={140}>
-                <LineChart data={entries}>
-                  <XAxis dataKey="date" tick={{ fontSize: 9 }} />
-                  <YAxis tick={{ fontSize: 9 }} width={30} domain={['auto', 'auto']} />
-                  <Tooltip contentStyle={{ fontSize: 11 }} />
-                  <ReferenceArea
-                    y1={entries[0].ref_low}
-                    y2={entries[0].ref_high}
-                    fill="hsl(var(--accent))"
-                    fillOpacity={0.2}
-                  />
-                  <Line type="monotone" dataKey="value" stroke="hsl(var(--primary))" strokeWidth={2} dot={{ r: 4 }} name={name} />
-                </LineChart>
-              </ResponsiveContainer>
-              <p className="text-[10px] text-muted-foreground mt-1">
-                Reference range: {entries[0].ref_low}–{entries[0].ref_high} {entries[0].unit}
-              </p>
-            </ChartCard>
-          ))
-        ) : (
-          <ChartCard title="Lab trends">
-            <p className="text-sm text-muted-foreground">
-              Add lab results in Records to see your values over time.
-            </p>
-          </ChartCard>
-        )}
-      </section>
-
-      {/* ── SECTION 3: THOUGHTS ── */}
-      <section className="space-y-3">
-        <div>
-          <h2 className="text-xl font-bold">Thoughts</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">A weekly prompt, just for you.</p>
-        </div>
-
-        <div className="rounded-lg border bg-card p-4 space-y-3">
-          <p className="text-sm font-medium leading-relaxed">"{promptText}"</p>
-          {currentWeekEntry ? (
-            <div className="space-y-2">
-              <p className="text-sm text-muted-foreground leading-relaxed">{currentWeekEntry.text}</p>
-              <button
-                onClick={() => openEditor(currentWeekEntry)}
-                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <Pencil className="h-3 w-3" /> Edit
-              </button>
-            </div>
-          ) : (
-            <Button variant="outline" size="sm" onClick={() => openEditor()}>
-              Write this week's entry
-            </Button>
-          )}
-        </div>
-
-        {pastThoughts.length > 0 && (
-          <div className="space-y-2">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Previous entries</p>
-            {pastThoughts.map(thought => {
-              const isExpanded = expandedIds.has(thought.id);
-              return (
-                <div key={thought.id} className="rounded-lg border bg-card p-4 space-y-2">
-                  <p className="text-xs italic text-muted-foreground">"{thought.prompt_text}"</p>
-                  <p className="text-xs text-muted-foreground">
-                    {format(new Date(thought.date), 'MMMM d, yyyy')}
-                  </p>
-                  <p
-                    className={`text-sm leading-relaxed cursor-pointer ${!isExpanded ? 'line-clamp-2' : ''}`}
-                    onClick={() => toggleExpanded(thought.id)}
-                  >
-                    {thought.text}
-                  </p>
-                  {!isExpanded && (
-                    <button
-                      onClick={() => toggleExpanded(thought.id)}
-                      className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                      Read more
-                    </button>
-                  )}
-                  <div className="flex items-center justify-between pt-2 border-t flex-wrap gap-2">
-                    <div className="flex items-center gap-2">
-                      <Switch
-                        checked={thought.include_in_report}
-                        onCheckedChange={() => toggleIncludeInReport(thought.id)}
-                        id={`report-${thought.id}`}
-                      />
-                      <label
-                        htmlFor={`report-${thought.id}`}
-                        className="text-xs text-muted-foreground cursor-pointer"
-                      >
-                        Include in doctor report
-                      </label>
-                    </div>
-                    {thought.include_in_report && (
-                      <span className="text-xs text-green-600">Will appear in your next report</span>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
       </section>
 
       {/* Entry editor */}
@@ -571,6 +530,47 @@ const Insights = () => {
               Save
             </Button>
           </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* Entry viewer */}
+      <Sheet open={isViewerOpen} onOpenChange={setIsViewerOpen}>
+        <SheetContent side="bottom" className="h-[72vh] flex flex-col gap-0 p-0 rounded-t-2xl">
+          {liveViewingThought && (
+            <>
+              <SheetHeader className="px-4 pt-5 pb-3 border-b shrink-0">
+                <SheetTitle className="text-base">
+                  {format(new Date(liveViewingThought.date), 'MMMM d, yyyy')}
+                </SheetTitle>
+                <p className="text-sm text-muted-foreground italic leading-relaxed">
+                  "{liveViewingThought.prompt_text}"
+                </p>
+              </SheetHeader>
+              <div className="flex-1 overflow-y-auto px-4 py-4">
+                <p className="text-sm leading-relaxed">{liveViewingThought.text}</p>
+              </div>
+              <div className="px-4 pb-8 pt-3 border-t shrink-0">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={liveViewingThought.include_in_report}
+                      onCheckedChange={() => toggleIncludeInReport(liveViewingThought.id)}
+                      id={`view-report-${liveViewingThought.id}`}
+                    />
+                    <label
+                      htmlFor={`view-report-${liveViewingThought.id}`}
+                      className="text-xs text-muted-foreground cursor-pointer"
+                    >
+                      Include in doctor report
+                    </label>
+                  </div>
+                  {liveViewingThought.include_in_report && (
+                    <span className="text-xs text-green-600">Will appear in your next report</span>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
         </SheetContent>
       </Sheet>
     </div>
