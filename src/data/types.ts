@@ -220,3 +220,21 @@ export interface AIInsight {
   content: Record<string, any>;
   dismissed: boolean;
 }
+
+export interface ThoughtEntry {
+  id: string;
+  week_key: string;
+  prompt_index: number;
+  prompt_text: string;
+  text: string;
+  date: string;
+  include_in_report: boolean;
+}
+
+export interface WatchListItem {
+  id: string;
+  observation: string;
+  date_flagged: string;
+  confidence: 'noticing' | 'watching' | 'strong';
+  evidence: string;
+}

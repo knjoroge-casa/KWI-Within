@@ -1,4 +1,4 @@
-import { UserProfile, DailyLog, MedicalRecord, AIInsight } from './types';
+import { UserProfile, DailyLog, MedicalRecord, AIInsight, ThoughtEntry, WatchListItem } from './types';
 import { subDays, format } from 'date-fns';
 
 const today = new Date();
@@ -241,3 +241,102 @@ export const symptomFrequencyData = [
   { name: 'Anxiety', count: 9 },
   { name: 'Headache', count: 5 },
 ].sort((a, b) => b.count - a.count);
+
+// ── 90-day chart data ──
+
+const energyBasePattern = [3,4,2,3,4,5,3,2,3,4,4,3,2,1,2,3,4,4,5,3,3,2,4,3,3,4,2,3,4,5,3,2,3,4,3,2,4,3,3,4,5,3];
+
+export const energyArcData = Array.from({ length: 90 }, (_, i) => {
+  const base = energyBasePattern[i % energyBasePattern.length];
+  return {
+    date: format(subDays(today, 89 - i), 'MMM d'),
+    morning: base,
+    midday: Math.max(1, base - (i % 3 === 0 ? 1 : 0)),
+    evening: Math.max(1, base - 1),
+  };
+});
+
+const sleepHourPattern = [6.5,7,5.5,7.5,8,6,7,5,6.5,7.5,7,6.5,5,4.5,6,7,7.5,8,7,6.5,7,5.5,7.5,6,6.5,7,5,6.5,7,8,7,6,7,7.5,6.5,5.5,7,6.5,7,7.5,8,7];
+const hourToQuality = (h: number): number => h < 5 ? 1 : h < 6 ? 2 : h < 7 ? 3 : h < 8 ? 4 : 5;
+
+export const sleepChartData = Array.from({ length: 90 }, (_, i) => {
+  const hours = sleepHourPattern[i % sleepHourPattern.length];
+  return {
+    date: format(subDays(today, 89 - i), 'MMM d'),
+    hours,
+    quality: hourToQuality(hours),
+  };
+});
+
+const weekPatterns = [
+  { full: 4, reduced: 2, rest: 1 }, { full: 5, reduced: 1, rest: 1 },
+  { full: 3, reduced: 3, rest: 1 }, { full: 4, reduced: 2, rest: 1 },
+  { full: 2, reduced: 3, rest: 2 }, { full: 5, reduced: 1, rest: 1 },
+  { full: 4, reduced: 2, rest: 1 }, { full: 3, reduced: 3, rest: 1 },
+  { full: 4, reduced: 2, rest: 1 }, { full: 5, reduced: 2, rest: 0 },
+  { full: 3, reduced: 2, rest: 2 }, { full: 4, reduced: 2, rest: 1 },
+  { full: 5, reduced: 1, rest: 1 },
+];
+
+export const capacityWeeklyData = weekPatterns.map((w, i) => ({
+  week: format(subDays(today, (12 - i) * 7), 'MMM d'),
+  ...w,
+}));
+
+export const symptomFrequencyWithTrends: Array<{ name: string; count: number; trend: 'up' | 'stable' | 'down' }> = [
+  { name: 'Brain fog', count: 14, trend: 'up' },
+  { name: 'Joint stiffness', count: 12, trend: 'stable' },
+  { name: 'Fatigue', count: 11, trend: 'down' },
+  { name: 'Anxiety', count: 9, trend: 'up' },
+  { name: 'Pelvic heaviness', count: 8, trend: 'stable' },
+  { name: 'Bloating', count: 7, trend: 'down' },
+];
+
+// ── Placeholder watch list & thoughts ──
+
+export const placeholderWatchList: WatchListItem[] = [
+  {
+    id: 'watch-1',
+    observation: 'Energy consistently low in the week before your period',
+    date_flagged: d(20),
+    confidence: 'strong',
+    evidence: 'This pattern has appeared in 8 of your last 10 cycles.',
+  },
+  {
+    id: 'watch-2',
+    observation: 'Brain fog most noticeable in the mornings',
+    date_flagged: d(12),
+    confidence: 'watching',
+    evidence: 'Morning brain fog logged on 9 of the last 14 days.',
+  },
+];
+
+export const placeholderThoughts: ThoughtEntry[] = [
+  {
+    id: 'thought-1',
+    week_key: '2026-W13',
+    prompt_index: 0,
+    prompt_text: "What has your body surprised you with lately?",
+    text: "I was genuinely surprised by how much better I felt after that long walk on Saturday. I kept expecting to feel worse afterwards but I didn't — I actually had more energy that evening. Maybe gentle movement really does help more than rest sometimes.",
+    date: d(35),
+    include_in_report: false,
+  },
+  {
+    id: 'thought-2',
+    week_key: '2026-W14',
+    prompt_index: 1,
+    prompt_text: "Is there something you've been ignoring that keeps coming back?",
+    text: "The fatigue in the afternoons. I keep telling myself it's just because I didn't sleep well, but it's been happening every week for months now. I think I need to actually talk to Dr Chen about it instead of just logging it.",
+    date: d(28),
+    include_in_report: true,
+  },
+  {
+    id: 'thought-3',
+    week_key: '2026-W16',
+    prompt_index: 3,
+    prompt_text: "What's one thing you did this week that was genuinely just for you?",
+    text: "The 45-minute yoga session on Thursday morning before anyone else was up. No interruptions. Just me and the mat. It felt indulgent in the best way.",
+    date: d(14),
+    include_in_report: false,
+  },
+];
