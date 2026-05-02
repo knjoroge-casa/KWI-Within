@@ -284,7 +284,7 @@ function ChartCard({ title, children }: { title: string; children: ReactNode }) 
 const Insights = () => {
   const navigate = useNavigate();
   const [openCards, setOpenCards] = useState({ previousThoughts: false, thisWeek: true, thisMonth: false, watchList: false });
-  const [trendsCards, setTrendsCards] = useState({ cycleCorrelation: false, whatsChanged: false });
+  const [trendsCards, setTrendsCards] = useState({ mostFrequent: false, cycleCorrelation: false, whatsChanged: false });
   const [selectedDays, setSelectedDays] = useState<30 | 60 | 90>(30);
   const [watchList, setWatchList] = useState<WatchListItem[]>(placeholderWatchList);
   const [thoughts, setThoughts] = useState<ThoughtEntry[]>(placeholderThoughts);
@@ -520,44 +520,62 @@ const Insights = () => {
           ))}
         </div>
 
-        {/* A) Most Frequent Symptoms — always visible */}
-        <div className="rounded-lg border bg-card p-4 space-y-4">
-          <h3 className="text-sm font-semibold">Most Frequent Symptoms</h3>
-
-          <div className="space-y-4">
-            {SYMPTOM_INSIGHTS.slice(0, 5).map(s => (
-              <div key={s.name} className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">{s.name}</span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">{s.count} days</span>
-                    <span className={`text-xs font-medium ${
-                      s.trend === 'up' ? 'text-rose-500' : s.trend === 'down' ? 'text-green-600' : 'text-muted-foreground'
-                    }`}>
-                      {s.trend === 'up' ? '↑' : s.trend === 'down' ? '↓' : '→'}
-                    </span>
-                  </div>
-                </div>
-                {s.explanation && (
-                  <p className="text-xs text-muted-foreground leading-relaxed">{s.explanation}</p>
-                )}
-              </div>
-            ))}
-          </div>
-
-          <div className="border-t pt-4 space-y-3">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Worth Watching</p>
-            {SYMPTOM_INSIGHTS.slice(5, 7).map(s => (
-              <div key={s.name} className="flex items-start justify-between gap-2 opacity-70">
+        {/* A) Most Frequent Symptoms — collapsible */}
+        <Collapsible
+          open={trendsCards.mostFrequent}
+          onOpenChange={() => setTrendsCards(s => ({ ...s, mostFrequent: !s.mostFrequent }))}
+        >
+          <div className="rounded-lg border bg-card overflow-hidden">
+            <CollapsibleTrigger asChild>
+              <button className="flex w-full items-center justify-between p-4 text-left">
                 <div>
-                  <span className="text-sm">{s.name}</span>
-                  <p className="text-xs text-muted-foreground mt-0.5">Showing up but not yet a clear pattern.</p>
+                  <p className="text-sm font-semibold">Most Frequent Symptoms</p>
+                  <p className="text-xs text-muted-foreground">Top patterns and what's worth watching</p>
                 </div>
-                <span className="text-xs text-muted-foreground shrink-0">{s.count} days</span>
+                {trendsCards.mostFrequent
+                  ? <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0" />
+                  : <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />}
+              </button>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <div className="px-4 pb-4 space-y-4">
+                <div className="space-y-4">
+                  {SYMPTOM_INSIGHTS.slice(0, 5).map(s => (
+                    <div key={s.name} className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">{s.name}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground">{s.count} days</span>
+                          <span className={`text-xs font-medium ${
+                            s.trend === 'up' ? 'text-rose-500' : s.trend === 'down' ? 'text-green-600' : 'text-muted-foreground'
+                          }`}>
+                            {s.trend === 'up' ? '↑' : s.trend === 'down' ? '↓' : '→'}
+                          </span>
+                        </div>
+                      </div>
+                      {s.explanation && (
+                        <p className="text-xs text-muted-foreground leading-relaxed">{s.explanation}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="border-t pt-4 space-y-3">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Worth Watching</p>
+                  {SYMPTOM_INSIGHTS.slice(5, 7).map(s => (
+                    <div key={s.name} className="flex items-start justify-between gap-2 opacity-70">
+                      <div>
+                        <span className="text-sm">{s.name}</span>
+                        <p className="text-xs text-muted-foreground mt-0.5">Showing up but not yet a clear pattern.</p>
+                      </div>
+                      <span className="text-xs text-muted-foreground shrink-0">{s.count} days</span>
+                    </div>
+                  ))}
+                </div>
               </div>
-            ))}
+            </CollapsibleContent>
           </div>
-        </div>
+        </Collapsible>
 
         {/* B) Cycle Correlation — collapsible, collapsed by default */}
         <Collapsible
