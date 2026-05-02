@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   format, getWeek,
   startOfMonth, endOfMonth, eachDayOfInterval,
@@ -8,7 +9,7 @@ import {
 } from 'date-fns';
 import { ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Pencil } from 'lucide-react';
 import {
-  LineChart, Line, BarChart, Bar, XAxis, YAxis,
+  BarChart, Bar, XAxis, YAxis,
   Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -18,9 +19,6 @@ import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import {
-  energyArcData,
-  capacityWeeklyData,
-  symptomFrequencyWithTrends,
   placeholderWatchList,
   placeholderThoughts,
 } from '@/data/placeholder';
@@ -101,6 +99,74 @@ const THIS_MONTH_OBS = [
     vsLastMonth: 'better' as const,
   },
 ];
+
+// ── Trends placeholder data ──
+
+const SYMPTOM_INSIGHTS: Array<{
+  name: string;
+  count: number;
+  trend: 'up' | 'stable' | 'down';
+  explanation?: string;
+}> = [
+  {
+    name: 'Brain fog',
+    count: 14,
+    trend: 'up',
+    explanation: 'Brain fog has been your most frequent symptom this period, appearing on 14 of 30 days. It clusters in the mornings and on days following less than 6 hours of sleep. Worth flagging to your doctor if this continues.',
+  },
+  {
+    name: 'Joint stiffness',
+    count: 12,
+    trend: 'stable',
+    explanation: 'Joint stiffness has appeared consistently across the month, averaging 3 days per week. It tends to be worse in the first half of the day and improves with movement. Stable compared to last period.',
+  },
+  {
+    name: 'Fatigue',
+    count: 11,
+    trend: 'down',
+    explanation: 'Fatigue is your third most logged symptom but has decreased since last month. It correlates strongly with your pre-period phase and days with disrupted sleep. A positive trend overall.',
+  },
+  {
+    name: 'Anxiety',
+    count: 9,
+    trend: 'up',
+    explanation: 'Anxiety has increased compared to the previous period, appearing on 9 of 30 days. It clusters in the week before your period and on high-symptom days. This pattern is worth tracking closely.',
+  },
+  {
+    name: 'Pelvic heaviness',
+    count: 8,
+    trend: 'stable',
+    explanation: 'Pelvic heaviness has been steady this month, concentrated in the pre-period and period phases. It appears alongside bloating on 6 of those days, suggesting a hormonal connection.',
+  },
+  { name: 'Bloating', count: 7, trend: 'down' },
+  { name: 'Headaches', count: 5, trend: 'stable' },
+];
+
+const CYCLE_CORRELATION_DATA = [
+  { phase: 'Pre-period', fatigue: 8, brainFog: 9, bloating: 7, cramps: 6 },
+  { phase: 'Period',     fatigue: 6, brainFog: 5, bloating: 5, cramps: 8 },
+  { phase: 'Mid-cycle',  fatigue: 2, brainFog: 3, bloating: 2, cramps: 1 },
+  { phase: 'Post-period',fatigue: 3, brainFog: 4, bloating: 3, cramps: 2 },
+];
+
+const WHATS_CHANGED = {
+  increased: [
+    { name: 'Brain fog',       delta: 4 },
+    { name: 'Anxiety',         delta: 3 },
+    { name: 'Joint stiffness', delta: 2 },
+  ],
+  decreased: [
+    { name: 'Fatigue',  delta: -3 },
+    { name: 'Bloating', delta: -2 },
+  ],
+  newThisPeriod: [
+    { name: 'Pelvic heaviness', count: 8 },
+  ],
+  noLongerLogged: [
+    { name: 'Nausea',    lastCount: 4 },
+    { name: 'Insomnia',  lastCount: 3 },
+  ],
+};
 
 // ── Helpers ──
 
@@ -216,7 +282,9 @@ function ChartCard({ title, children }: { title: string; children: ReactNode }) 
 // ── Main component ──
 
 const Insights = () => {
-  const [openCards, setOpenCards] = useState({ previousThoughts: false, thisWeek: false, thisMonth: false, watchList: false });
+  const navigate = useNavigate();
+  const [openCards, setOpenCards] = useState({ previousThoughts: false, thisWeek: true, thisMonth: false, watchList: false });
+  const [trendsCards, setTrendsCards] = useState({ cycleCorrelation: false, whatsChanged: false });
   const [selectedDays, setSelectedDays] = useState<30 | 60 | 90>(30);
   const [watchList, setWatchList] = useState<WatchListItem[]>(placeholderWatchList);
   const [thoughts, setThoughts] = useState<ThoughtEntry[]>(placeholderThoughts);
@@ -232,12 +300,6 @@ const Insights = () => {
   const pastThoughts = [...thoughts]
     .filter(t => t.week_key !== weekKey)
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-  // Chart slices
-  const xInterval = Math.floor(selectedDays / 6);
-  const energySlice = energyArcData.slice(-selectedDays);
-  const weekCount = selectedDays === 30 ? 4 : selectedDays === 60 ? 9 : 13;
-  const capacitySlice = capacityWeeklyData.slice(-weekCount);
 
   // Calendar
   const calendarDays = getCalendarDays(calendarMonth);
@@ -458,57 +520,160 @@ const Insights = () => {
           ))}
         </div>
 
-        <ChartCard title="Energy through the day">
-          <ResponsiveContainer width="100%" height={160}>
-            <LineChart data={energySlice}>
-              <XAxis dataKey="date" tick={{ fontSize: 9 }} interval={xInterval} />
-              <YAxis domain={[1, 5]} tick={{ fontSize: 9 }} width={18} />
-              <Tooltip contentStyle={{ fontSize: 11 }} />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Line type="monotone" dataKey="morning" stroke="#d97706" strokeWidth={2} dot={false} name="Morning" />
-              <Line type="monotone" dataKey="midday" stroke="#e07a5f" strokeWidth={2} dot={false} name="Midday" />
-              <Line type="monotone" dataKey="evening" stroke="#6366f1" strokeWidth={2} dot={false} name="Evening" />
-            </LineChart>
-          </ResponsiveContainer>
-        </ChartCard>
+        {/* A) Most Frequent Symptoms — always visible */}
+        <div className="rounded-lg border bg-card p-4 space-y-4">
+          <h3 className="text-sm font-semibold">Most Frequent Symptoms</h3>
 
-        <ChartCard title="How your days have been">
-          <ResponsiveContainer width="100%" height={170}>
-            <BarChart data={capacitySlice} barSize={18}>
-              <XAxis dataKey="week" tick={{ fontSize: 9 }} interval={0} angle={-30} textAnchor="end" height={40} />
-              <YAxis tick={{ fontSize: 9 }} width={18} />
-              <Tooltip contentStyle={{ fontSize: 11 }} />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Bar dataKey="full" stackId="a" fill="#6fac63" name="Full days" />
-              <Bar dataKey="reduced" stackId="a" fill="#f59e0b" name="Reduced" />
-              <Bar dataKey="rest" stackId="a" fill="#f4a261" name="Rest days" radius={[2, 2, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartCard>
-
-        <ChartCard title="Most frequent symptoms">
-          <div className="space-y-2.5">
-            {symptomFrequencyWithTrends.slice(0, 6).map(s => (
-              <div key={s.name} className="flex items-center gap-2">
-                <span className="text-xs w-28 shrink-0 text-muted-foreground">{s.name}</span>
-                <div className="flex-1 bg-muted rounded-full h-2">
-                  <div
-                    className="bg-primary/80 h-2 rounded-full transition-all"
-                    style={{ width: `${(s.count / 15) * 100}%` }}
-                  />
+          <div className="space-y-4">
+            {SYMPTOM_INSIGHTS.slice(0, 5).map(s => (
+              <div key={s.name} className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">{s.name}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">{s.count} days</span>
+                    <span className={`text-xs font-medium ${
+                      s.trend === 'up' ? 'text-rose-500' : s.trend === 'down' ? 'text-green-600' : 'text-muted-foreground'
+                    }`}>
+                      {s.trend === 'up' ? '↑' : s.trend === 'down' ? '↓' : '→'}
+                    </span>
+                  </div>
                 </div>
-                <span className="text-xs w-5 text-right text-muted-foreground">{s.count}</span>
-                <span className="w-4 text-center">
-                  {s.trend === 'up'
-                    ? <span className="text-xs text-rose-500">↑</span>
-                    : s.trend === 'down'
-                    ? <span className="text-xs text-green-600">↓</span>
-                    : <span className="text-xs text-muted-foreground">→</span>}
-                </span>
+                {s.explanation && (
+                  <p className="text-xs text-muted-foreground leading-relaxed">{s.explanation}</p>
+                )}
               </div>
             ))}
           </div>
-        </ChartCard>
+
+          <div className="border-t pt-4 space-y-3">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Worth Watching</p>
+            {SYMPTOM_INSIGHTS.slice(5, 7).map(s => (
+              <div key={s.name} className="flex items-start justify-between gap-2 opacity-70">
+                <div>
+                  <span className="text-sm">{s.name}</span>
+                  <p className="text-xs text-muted-foreground mt-0.5">Showing up but not yet a clear pattern.</p>
+                </div>
+                <span className="text-xs text-muted-foreground shrink-0">{s.count} days</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* B) Cycle Correlation — collapsible, collapsed by default */}
+        <Collapsible
+          open={trendsCards.cycleCorrelation}
+          onOpenChange={() => setTrendsCards(s => ({ ...s, cycleCorrelation: !s.cycleCorrelation }))}
+        >
+          <div className="rounded-lg border bg-card overflow-hidden">
+            <CollapsibleTrigger asChild>
+              <button className="flex w-full items-center justify-between p-4 text-left">
+                <div>
+                  <p className="text-sm font-semibold">Cycle Correlation</p>
+                  <p className="text-xs text-muted-foreground">When symptoms cluster in your cycle</p>
+                </div>
+                {trendsCards.cycleCorrelation
+                  ? <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0" />
+                  : <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />}
+              </button>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <div className="px-4 pb-4">
+                <ResponsiveContainer width="100%" height={180}>
+                  <BarChart data={CYCLE_CORRELATION_DATA} barSize={14}>
+                    <XAxis dataKey="phase" tick={{ fontSize: 9 }} />
+                    <YAxis tick={{ fontSize: 9 }} width={18} />
+                    <Tooltip contentStyle={{ fontSize: 11 }} />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    <Bar dataKey="fatigue"  stackId="a" fill="#f59e0b" name="Fatigue" />
+                    <Bar dataKey="brainFog" stackId="a" fill="#6366f1" name="Brain fog" />
+                    <Bar dataKey="bloating" stackId="a" fill="#e07a5f" name="Bloating" />
+                    <Bar dataKey="cramps"   stackId="a" fill="#d97706" name="Cramps" radius={[2, 2, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </CollapsibleContent>
+          </div>
+        </Collapsible>
+
+        {/* C) What's Changed — collapsible, collapsed by default */}
+        <Collapsible
+          open={trendsCards.whatsChanged}
+          onOpenChange={() => setTrendsCards(s => ({ ...s, whatsChanged: !s.whatsChanged }))}
+        >
+          <div className="rounded-lg border bg-card overflow-hidden">
+            <CollapsibleTrigger asChild>
+              <button className="flex w-full items-center justify-between p-4 text-left">
+                <div>
+                  <p className="text-sm font-semibold">What's Changed</p>
+                  <p className="text-xs text-muted-foreground">Compared to the previous period</p>
+                </div>
+                {trendsCards.whatsChanged
+                  ? <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0" />
+                  : <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />}
+              </button>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <div className="px-4 pb-4 space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-rose-500">Increased this period</p>
+                    {WHATS_CHANGED.increased.map(item => (
+                      <div key={item.name} className="flex justify-between items-center">
+                        <span className="text-xs">{item.name}</span>
+                        <span className="text-xs text-muted-foreground">+{item.delta} days</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-green-600">Decreased this period</p>
+                    {WHATS_CHANGED.decreased.map(item => (
+                      <div key={item.name} className="flex justify-between items-center">
+                        <span className="text-xs">{item.name}</span>
+                        <span className="text-xs text-muted-foreground">{item.delta} days</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="border-t pt-3 space-y-2">
+                  <p className="text-xs font-semibold text-muted-foreground">New this period</p>
+                  {WHATS_CHANGED.newThisPeriod.map(item => (
+                    <div key={item.name} className="flex justify-between items-center">
+                      <span className="text-xs">{item.name}</span>
+                      <span className="text-xs text-muted-foreground">{item.count} days</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-muted-foreground">No longer logged</p>
+                  {WHATS_CHANGED.noLongerLogged.map(item => (
+                    <div key={item.name} className="flex justify-between items-center">
+                      <span className="text-xs text-muted-foreground">{item.name}</span>
+                      <span className="text-xs text-muted-foreground">{item.lastCount} days last period</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </CollapsibleContent>
+          </div>
+        </Collapsible>
+      </section>
+
+      {/* ── SECTION 4: FOR YOUR DOCTOR ── */}
+      <section>
+        <div className="rounded-lg bg-amber-50 border border-amber-200 p-5 space-y-4">
+          <div>
+            <h2 className="text-lg font-bold text-amber-900">For your doctor</h2>
+            <p className="text-sm text-amber-800 leading-relaxed mt-2">
+              The clearest picture of how you've been is in your data — patterns, frequencies, dates, your own words. Keep logging consistently, then bring this with you.
+            </p>
+          </div>
+          <Button
+            className="w-full bg-amber-700 hover:bg-amber-800 text-white"
+            onClick={() => navigate('/doctor-report')}
+          >
+            Open your report →
+          </Button>
+        </div>
       </section>
 
       {/* Entry editor */}
