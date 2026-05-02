@@ -660,15 +660,15 @@ const Insights = () => {
 
       {/* ── SECTION 4: FOR YOUR DOCTOR ── */}
       <section>
-        <div className="rounded-lg bg-amber-50 border border-amber-200 p-5 space-y-4">
+        <div className="rounded-lg bg-primary/5 border border-primary/20 p-5 space-y-4">
           <div>
-            <h2 className="text-lg font-bold text-amber-900">For your doctor</h2>
-            <p className="text-sm text-amber-800 leading-relaxed mt-2">
+            <h2 className="text-lg font-bold text-primary">For your doctor</h2>
+            <p className="text-sm text-foreground/80 leading-relaxed mt-2">
               The clearest picture of how you've been is in your data — patterns, frequencies, dates, your own words. Keep logging consistently, then bring this with you.
             </p>
           </div>
           <Button
-            className="w-full bg-amber-700 hover:bg-amber-800 text-white"
+            className="w-full"
             onClick={() => navigate('/doctor-report')}
           >
             Open your report →

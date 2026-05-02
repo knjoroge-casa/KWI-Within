@@ -1,27 +1,16 @@
-# Insights — Wrap calendar in "Previous Thoughts" collapsible
+## Recolor "For your doctor" card — Insights page
 
-Small UI tweak on the Insights page, Thoughts section.
+Currently the card uses an amber palette (`bg-amber-50`, `border-amber-200`, `text-amber-900/800`, button `bg-amber-700`). It clashes with the rest of the app. Re-skin it using the project's primary color (deep plum — same family as the logo and the floating Ask KWI chat icon).
 
-## Change
+### Change
 
-Currently the month-grid calendar of past thought entries sits directly under this week's prompt card, always visible.
+In `src/pages/Insights.tsx` (the section starting at line 661), swap the amber utility classes for theme tokens tied to `--primary`:
 
-Wrap it in a collapsible card titled **"Previous Thoughts"** so it acts as a clear repository, not just a loose calendar. Collapsed by default — tap to expand and reveal the existing calendar (month nav + day grid + dot markers + tap-to-view sheet) exactly as it works today.
+- Container: `bg-primary/5 border border-primary/20` (soft plum tint, consistent with other cards on the page)
+- Heading: `text-primary` (deep plum, matches logo)
+- Body copy: `text-foreground/80` (readable, on-brand)
+- Button: keep default `Button` styling (already uses `bg-primary` with `text-primary-foreground` and a proper hover state) — remove the amber override classes
 
-### Collapsed state
-- Card with title **"Previous Thoughts"**
-- Subtext: **"Tap to browse past entries"** (or hide if no past entries exist)
-- Chevron on the right, matching the "This Week" / "This Month" / "Watch List" cards below
+### Result
 
-### Expanded state
-- Calendar renders inside the card (same month navigation, day grid, entry dots, viewer sheet)
-
-### Empty state
-- If `pastThoughts.length === 0`, don't render the card at all (same as current behaviour)
-
-## File
-
-- `src/pages/DailyLog.tsx` — no changes
-- `src/pages/Insights.tsx` — reuse the existing `CollapsibleCard` component already used in the "Within Kui" section. Add a `previousThoughts` key to the `openCards` state (default `false`). Move the calendar JSX inside `<CollapsibleCard title="Previous Thoughts" …>`.
-
-No data, type, or styling system changes.
+The card sits in the same plum family as the logo and the Ask KWI floating button, while the CTA button matches every other primary action in the app. No new tokens, no other files touched.
