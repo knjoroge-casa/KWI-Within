@@ -238,3 +238,25 @@ export interface WatchListItem {
   confidence: 'noticing' | 'watching' | 'strong';
   evidence: string;
 }
+
+export interface Appointment {
+  id: string;
+  doctor: string;
+  specialty: string;
+  date: string;
+  what_to_discuss?: string;
+}
+
+export interface PastReport {
+  id: string;
+  generated_at: string;
+  period_start: string;
+  period_end: string;
+  appointment?: {
+    doctor: string;
+    specialty: string;
+    date: string;
+  };
+  report_length: 'full' | 'short';
+  include_thoughts: boolean;
+}

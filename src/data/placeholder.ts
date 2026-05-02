@@ -1,4 +1,4 @@
-import { UserProfile, DailyLog, MedicalRecord, AIInsight, ThoughtEntry, WatchListItem } from './types';
+import { UserProfile, DailyLog, MedicalRecord, AIInsight, ThoughtEntry, WatchListItem, Appointment, PastReport } from './types';
 import { subDays, format } from 'date-fns';
 
 const today = new Date();
@@ -338,5 +338,42 @@ export const placeholderThoughts: ThoughtEntry[] = [
     text: "The 45-minute yoga session on Thursday morning before anyone else was up. No interruptions. Just me and the mat. It felt indulgent in the best way.",
     date: d(14),
     include_in_report: false,
+  },
+];
+
+export const placeholderAppointments: Appointment[] = [
+  {
+    id: 'appt-1',
+    doctor: 'Wanjiru Osei',
+    specialty: 'Gynaecology',
+    date: '2026-05-08',
+    what_to_discuss: "Heavy bleeding has worsened over the past two cycles. I've also been experiencing increasing fatigue and hair shedding which I suspect may be linked. I'd like to discuss whether further imaging is needed and review my iron levels.",
+  },
+  {
+    id: 'appt-2',
+    doctor: 'P Mwangi',
+    specialty: 'General Practice',
+    date: '2026-05-22',
+    what_to_discuss: 'Follow-up on iron supplementation and energy levels.',
+  },
+];
+
+export const placeholderPastReports: PastReport[] = [
+  {
+    id: 'report-1',
+    generated_at: '2026-02-12',
+    period_start: '2025-11-01',
+    period_end: '2026-01-31',
+    appointment: { doctor: 'Wanjiru Osei', specialty: 'Gynaecology', date: '2026-02-14' },
+    report_length: 'full',
+    include_thoughts: false,
+  },
+  {
+    id: 'report-2',
+    generated_at: '2026-01-05',
+    period_start: '2025-10-01',
+    period_end: '2025-12-31',
+    report_length: 'full',
+    include_thoughts: false,
   },
 ];
