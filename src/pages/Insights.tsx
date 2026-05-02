@@ -284,7 +284,7 @@ function ChartCard({ title, children }: { title: string; children: ReactNode }) 
 const Insights = () => {
   const navigate = useNavigate();
   const [openCards, setOpenCards] = useState({ previousThoughts: false, thisWeek: true, thisMonth: false, watchList: false });
-  const [trendsCards, setTrendsCards] = useState({ cycleCorrelation: false, whatsChanged: false });
+  const [trendsCards, setTrendsCards] = useState({ mostFrequent: false, cycleCorrelation: false, whatsChanged: false });
   const [selectedDays, setSelectedDays] = useState<30 | 60 | 90>(30);
   const [watchList, setWatchList] = useState<WatchListItem[]>(placeholderWatchList);
   const [thoughts, setThoughts] = useState<ThoughtEntry[]>(placeholderThoughts);
