@@ -42,9 +42,9 @@ const THOUGHTS_PROMPTS = [
 ];
 
 const confidenceConfig = {
-  noticing: { label: 'Just noticing', className: 'bg-blue-100 text-blue-700' },
-  watching: { label: 'Worth watching', className: 'bg-amber-100 text-amber-700' },
-  strong: { label: 'Strong pattern', className: 'bg-red-100 text-red-700' },
+  noticing: { label: 'Just noticing', className: 'bg-primary/10 text-primary/70' },
+  watching: { label: 'Worth watching', className: 'bg-primary/20 text-primary' },
+  strong: { label: 'Strong pattern', className: 'bg-primary text-primary-foreground' },
 } as const;
 
 const vsLastMonthConfig = {
