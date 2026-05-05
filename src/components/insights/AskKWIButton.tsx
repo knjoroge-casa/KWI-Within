@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { MessageCircle, X, Send } from 'lucide-react';
+import { MessageCircle, Send } from 'lucide-react';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 
 const CONVERSATION: Array<{ role: 'user' | 'kwi'; text: string }> = [
@@ -31,12 +31,6 @@ export const AskKWIButton = () => {
               <h2 className="font-semibold">Ask KWI</h2>
               <p className="text-xs text-muted-foreground mt-0.5">Ask anything about your data</p>
             </div>
-            <button
-              onClick={() => setIsOpen(false)}
-              className="rounded-full p-1 hover:bg-muted transition-colors mt-0.5"
-            >
-              <X className="h-5 w-5 text-muted-foreground" />
-            </button>
           </div>
 
           <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
