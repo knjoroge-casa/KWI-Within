@@ -26,10 +26,17 @@ export const useApp = () => {
 
 export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [profile, setProfile] = useState<UserProfile>(defaultProfile);
-  const [onboarded, setOnboarded] = useState(true); // true for demo
+  const [onboarded, setOnboardedState] = useState<boolean>(
+    () => localStorage.getItem('kwi_onboarded') === 'true',
+  );
   const [logs, setLogs] = useState<DailyLog[]>(placeholderLogs);
   const [records, setRecords] = useState<MedicalRecord[]>(placeholderRecords);
   const [insights, setInsights] = useState<AIInsight[]>(placeholderInsights);
+
+  const setOnboarded = (v: boolean) => {
+    localStorage.setItem('kwi_onboarded', String(v));
+    setOnboardedState(v);
+  };
 
   const dismissInsight = (id: string) => {
     setInsights(prev => prev.map(i => i.id === id ? { ...i, dismissed: true } : i));
