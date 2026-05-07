@@ -681,7 +681,7 @@ const DoctorReport = () => {
 
       {/* ── PREVIEW OVERLAY ── */}
       <Sheet open={previewOpen} onOpenChange={setPreviewOpen}>
-        <SheetContent side="bottom" className="h-[100dvh] flex flex-col gap-0 p-0">
+        <SheetContent side="bottom" className="h-[100dvh] flex flex-col gap-0 p-0 [&>button:last-child]:hidden">
           <SheetTitle className="sr-only">Report preview</SheetTitle>
 
           {/* Top bar */}
