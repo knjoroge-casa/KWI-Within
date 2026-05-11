@@ -14,6 +14,7 @@ import Insights from "./pages/Insights";
 import DoctorReport from "./pages/DoctorReport";
 import Settings from "./pages/Settings";
 import Onboarding from "./pages/Onboarding";
+import SignIn from "./pages/SignIn";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -30,6 +31,7 @@ const AppRoutes = () => {
   if (!onboarded) {
     return (
       <Routes>
+        <Route path="/signin" element={<SignIn />} />
         <Route path="/onboarding" element={<Onboarding />} />
         <Route path="*" element={<Navigate to="/onboarding" replace />} />
       </Routes>
@@ -46,6 +48,7 @@ const AppRoutes = () => {
         <Route path="/doctor-report" element={<AppLayout><DoctorReport /></AppLayout>} />
         <Route path="/settings" element={<AppLayout><Settings /></AppLayout>} />
         <Route path="/onboarding" element={<Onboarding />} />
+        <Route path="/signin" element={<SignIn />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
       <AskKWIButton />
