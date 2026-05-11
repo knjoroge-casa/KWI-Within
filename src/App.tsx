@@ -14,6 +14,7 @@ import Insights from "./pages/Insights";
 import DoctorReport from "./pages/DoctorReport";
 import Settings from "./pages/Settings";
 import Onboarding from "./pages/Onboarding";
+import SignIn from "./pages/SignIn";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
