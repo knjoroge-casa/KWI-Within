@@ -5,8 +5,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
-const QUOTE = "Tracking isn't about control. It's about understanding.";
-
 const VisualPanel = ({ children }: { children: React.ReactNode }) => (
   <div className="relative h-full w-full overflow-hidden">
     <div className="absolute inset-0 bg-gradient-to-br from-secondary via-background to-muted" />
@@ -57,13 +55,13 @@ const SignIn = () => {
   return (
     <div className="min-h-screen bg-background lg:grid lg:grid-cols-2">
       {/* Mobile banner — logo on coloured background */}
-      <div className="h-44 lg:hidden">
+      <div className="h-60 lg:hidden">
         <VisualPanel>
           <Link to="/" aria-label="KWI Within home" className="block">
             <img
               src="/LogoMain.png"
               alt="KWI Within"
-              className="h-20 w-auto drop-shadow-sm"
+              className="h-32 w-auto drop-shadow-sm"
             />
           </Link>
         </VisualPanel>
@@ -143,16 +141,11 @@ const SignIn = () => {
               </button>
             </p>
           </form>
-
-          {/* Quote in the whitespace */}
-          <p className="mt-12 font-serif text-base italic text-muted-foreground text-center leading-relaxed">
-            "{QUOTE}"
-          </p>
         </div>
       </div>
 
       {/* Visual column — logo prominent */}
-      <div className="relative hidden lg:block order-first">
+      <div className="relative hidden lg:block">
         <VisualPanel>
           <div className="flex flex-col items-center">
             <Link to="/" aria-label="KWI Within home">
