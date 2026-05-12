@@ -19,7 +19,7 @@ const VisualPanel = ({ children }: { children: React.ReactNode }) => (
         backgroundSize: '4px 4px',
       }}
     />
-    <div className="relative flex h-full items-center justify-center px-6">
+    <div className="relative flex h-full items-center justify-center px-[20px]">
       {children}
     </div>
   </div>
