@@ -55,7 +55,7 @@ const SignIn = () => {
   return (
     <div className="min-h-screen bg-background lg:grid lg:grid-cols-2">
       {/* Mobile banner — logo on coloured background */}
-      <div className="h-72 lg:hidden">
+      <div className="h-36 lg:hidden">
         <VisualPanel>
           <Link to="/" aria-label="KWI Within home" className="flex items-center justify-center h-full w-full">
             <img
