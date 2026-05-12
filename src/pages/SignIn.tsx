@@ -5,8 +5,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
-const QUOTE = "Tracking isn't about control. It's about understanding.";
-
 const VisualPanel = ({ children }: { children: React.ReactNode }) => (
   <div className="relative h-full w-full overflow-hidden">
     <div className="absolute inset-0 bg-gradient-to-br from-secondary via-background to-muted" />
