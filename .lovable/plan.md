@@ -1,32 +1,16 @@
-## Swap logo and quote on SignIn page
+## Reformat SignIn page
 
-Rework `src/pages/SignIn.tsx` so the KWI logo lives on the coloured visual panel (prominent) and the quote sits in the whitespace alongside the form.
+Single-file change to `src/pages/SignIn.tsx`.
 
 ### Desktop (lg+)
-
-**Left column (form, white space):**
-- Remove the small logo above the heading.
-- Keep "Welcome back." + "Sign in to pick up where you left off." + form.
-- Add the new quote in serif italic, positioned with breathing room below the form (or above the heading — see Q below). Smaller, restrained — not the hero.
-
-**Right column (coloured panel):**
-- Replace the quote block with a large, prominent KWI logo centered on the organic-shape background.
-- Logo size ~220–260px wide, with the "KWI Within" eyebrow caption beneath it.
-- Keep the existing gradient + blurred plum/accent shapes + grain overlay.
+- **Left column:** sign in form, vertically centered with generous whitespace. Contains "Welcome back." heading, subtext, email/password fields, "Forgot password?", primary Sign in button, "Create an account" footer.
+- **Right column:** visual panel using the existing `VisualPanel` (KWI palette: plum/accent organic blurred shapes on cream gradient with grain overlay). Centerpiece: prominent KWI logo (~240–280px) with "KWI Within" eyebrow caption beneath.
+- Remove `order-first` so visual sits on the right.
 
 ### Mobile
+- Top banner keeps the coloured `VisualPanel` background with the KWI logo, but **logo enlarged** (from h-20 to ~h-28/h-32) and banner height bumped (h-44 → h-52) for breathing room.
+- **Remove the serif quote entirely** from the form column.
 
-- Top banner becomes the logo on the coloured background (replaces the quote there).
-- Quote moves into the form column as a small serif line near the bottom (under the "Create an account" link) so the white space carries it.
-
-### Copy change
-
-Quote everywhere becomes:
-> "Tracking isn't about control. It's about understanding."
-
-### Technical notes
-
-- Single-file change: `src/pages/SignIn.tsx`.
-- Update the `QUOTE` constant.
-- Swap the JSX inside the visual column and the form column / mobile banner.
-- No new dependencies, no token changes.
+### Cleanup
+- Delete the `QUOTE` constant and its JSX block in the form column.
+- No token, dependency, or routing changes.
