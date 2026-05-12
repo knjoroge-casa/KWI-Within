@@ -55,13 +55,13 @@ const SignIn = () => {
   return (
     <div className="min-h-screen bg-background lg:grid lg:grid-cols-2">
       {/* Mobile banner — logo on coloured background */}
-      <div className="h-60 lg:hidden">
+      <div className="h-72 lg:hidden">
         <VisualPanel>
-          <Link to="/" aria-label="KWI Within home" className="block">
+          <Link to="/" aria-label="KWI Within home" className="flex items-center justify-center h-full w-full">
             <img
               src="/LogoMain.png"
               alt="KWI Within"
-              className="h-32 w-auto drop-shadow-sm"
+              className="max-h-[75%] max-w-[75%] h-auto w-auto drop-shadow-sm"
             />
           </Link>
         </VisualPanel>
@@ -147,12 +147,12 @@ const SignIn = () => {
       {/* Visual column — logo prominent */}
       <div className="relative hidden lg:block">
         <VisualPanel>
-          <div className="flex flex-col items-center">
+          <div className="flex flex-col items-center justify-center h-full w-full">
             <Link to="/" aria-label="KWI Within home">
               <img
                 src="/LogoMain.png"
                 alt="KWI Within"
-                className="w-[240px] xl:w-[280px] h-auto drop-shadow-sm"
+                className="max-w-[75%] max-h-[75%] h-auto w-auto drop-shadow-sm"
               />
             </Link>
             <p className="mt-8 text-xs uppercase tracking-[0.25em] text-muted-foreground">
