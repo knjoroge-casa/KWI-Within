@@ -1,6 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
+import { Loader2, Mail } from 'lucide-react';
 import { useApp } from '@/contexts/AppContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -146,10 +149,14 @@ const PasswordReqs = ({ password }: { password: string }) => {
 const inputCls =
   'mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring';
 
+const inputDisabledCls =
+  'mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm opacity-50 cursor-not-allowed';
+
 // ── Main component ─────────────────────────────────────────────
 
 const Onboarding = () => {
   const { profile, setProfile, onboarded, setOnboarded } = useApp();
+  const { signUp, isAuthenticated, hasCompletedOnboarding, loading: authLoading, user } = useAuth();
   const navigate = useNavigate();
 
   // ── Screen (0=Welcome … 7=Closing) ──
@@ -165,9 +172,9 @@ const Onboarding = () => {
   const [dobYear, setDobYear] = useState('');
   const [agreedToTerms, setAgreedToTerms] = useState(false);
 
-  // ── OTP code ──
-  const [code, setCode] = useState<string[]>(['', '', '', '', '', '']);
-  const codeRefs = useRef<(HTMLInputElement | null)[]>([]);
+  // ── Sign up async state ──
+  const [signUpLoading, setSignUpLoading] = useState(false);
+  const [signUpError, setSignUpError] = useState<'exists' | 'generic' | null>(null);
 
   // ── Step 1 — Body ──
   const [fibroids, setFibroids] = useState('');
@@ -190,15 +197,48 @@ const Onboarding = () => {
   // ── Step 3 — Goals ──
   const [goals, setGoals] = useState<string[]>([]);
 
-  // Auto-focus first OTP box when entering confirm screen
-  useEffect(() => {
-    if (screen === 2) {
-      const t = setTimeout(() => codeRefs.current[0]?.focus(), 80);
-      return () => clearTimeout(t);
-    }
-  }, [screen]);
+  // Prevent double-handling the auth transition
+  const hasHandledAuth = useRef(false);
 
-  // ── Redirect if already onboarded ──
+  // Detect magic link return or arriving already authenticated
+  useEffect(() => {
+    if (authLoading || !isAuthenticated || hasHandledAuth.current) return;
+    hasHandledAuth.current = true;
+
+    if (hasCompletedOnboarding) {
+      navigate('/', { replace: true });
+      return;
+    }
+
+    // Write name/DOB from user_metadata into user_profile
+    const meta = user?.user_metadata ?? {};
+    const fn = (meta.first_name as string) || '';
+    const li = (meta.last_initial as string) || '';
+    const dm = meta.date_of_birth_month ? Number(meta.date_of_birth_month) : null;
+    const dy = meta.date_of_birth_year ? Number(meta.date_of_birth_year) : null;
+
+    if (fn) setFirstName(fn);
+    if (li) setLastInitial(li);
+    if (dm) setDobMonth(String(dm).padStart(2, '0'));
+    if (dy) setDobYear(String(dy));
+
+    if (user && (fn || li || dm || dy)) {
+      supabase
+        .from('user_profile')
+        .update({
+          first_name: fn || null,
+          last_initial: li || null,
+          date_of_birth_month: dm,
+          date_of_birth_year: dy,
+        })
+        .eq('id', user.id)
+        .then(() => setScreen(3));
+    } else {
+      setScreen(3);
+    }
+  }, [isAuthenticated, authLoading]);
+
+  // ── Redirect if already onboarded (localStorage guard) ──
   if (onboarded) return <Navigate to="/" replace />;
 
   // ── Sign-up validation ──
@@ -219,21 +259,39 @@ const Onboarding = () => {
     dobYear.trim().length >= 4 &&
     agreedToTerms;
 
-  const codeComplete = code.every(d => d !== '');
-
-  // ── OTP input handlers ──
-  const handleCodeChange = (i: number, val: string) => {
-    const digit = val.replace(/\D/g, '').slice(-1);
-    const next = [...code];
-    next[i] = digit;
-    setCode(next);
-    if (digit && i < 5) codeRefs.current[i + 1]?.focus();
+  // ── Handle sign up ──
+  const handleSignUp = async () => {
+    if (!signUpValid) return;
+    setSignUpLoading(true);
+    setSignUpError(null);
+    const { error } = await signUp(email.trim(), password, {
+      first_name: firstName.trim(),
+      last_initial: lastInitial.trim(),
+      date_of_birth_month: parseInt(dobMonth, 10),
+      date_of_birth_year: parseInt(dobYear, 10),
+    });
+    setSignUpLoading(false);
+    if (error) {
+      const lower = error.toLowerCase();
+      if (lower.includes('already registered') || lower.includes('already exists')) {
+        setSignUpError('exists');
+      } else {
+        setSignUpError('generic');
+      }
+    } else {
+      setScreen(2);
+    }
   };
 
-  const handleCodeKeyDown = (i: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Backspace' && !code[i] && i > 0) {
-      codeRefs.current[i - 1]?.focus();
-    }
+  // ── Resend confirmation email ──
+  const handleResend = async () => {
+    await signUp(email.trim(), password, {
+      first_name: firstName.trim(),
+      last_initial: lastInitial.trim(),
+      date_of_birth_month: parseInt(dobMonth, 10),
+      date_of_birth_year: parseInt(dobYear, 10),
+    });
+    toast('Confirmation email resent.');
   };
 
   // ── Skip handlers ──
@@ -357,7 +415,8 @@ const Onboarding = () => {
                   value={email}
                   onChange={e => setEmail(e.target.value)}
                   placeholder="you@example.com"
-                  className={inputCls}
+                  disabled={signUpLoading}
+                  className={signUpLoading ? inputDisabledCls : inputCls}
                 />
                 {email.length > 0 && !emailValid && (
                   <p className="text-xs text-destructive mt-1">Enter a valid email address.</p>
@@ -371,7 +430,8 @@ const Onboarding = () => {
                   type="password"
                   value={password}
                   onChange={e => setPassword(e.target.value)}
-                  className={inputCls}
+                  disabled={signUpLoading}
+                  className={signUpLoading ? inputDisabledCls : inputCls}
                 />
                 {password.length > 0 && <PasswordReqs password={password} />}
               </div>
@@ -383,7 +443,8 @@ const Onboarding = () => {
                   type="password"
                   value={confirmPw}
                   onChange={e => setConfirmPw(e.target.value)}
-                  className={inputCls}
+                  disabled={signUpLoading}
+                  className={signUpLoading ? inputDisabledCls : inputCls}
                 />
                 {confirmPw.length > 0 && confirmPw !== password && (
                   <p className="text-xs text-destructive mt-1">Passwords don't match.</p>
@@ -398,7 +459,8 @@ const Onboarding = () => {
                     value={firstName}
                     onChange={e => setFirstName(e.target.value)}
                     placeholder="Kui"
-                    className={inputCls}
+                    disabled={signUpLoading}
+                    className={signUpLoading ? inputDisabledCls : inputCls}
                   />
                 </div>
                 <div>
@@ -408,7 +470,8 @@ const Onboarding = () => {
                     onChange={e => setLastInitial(e.target.value.charAt(0))}
                     maxLength={1}
                     placeholder="N"
-                    className={inputCls}
+                    disabled={signUpLoading}
+                    className={signUpLoading ? inputDisabledCls : inputCls}
                   />
                 </div>
               </div>
@@ -420,7 +483,8 @@ const Onboarding = () => {
                   <select
                     value={dobMonth}
                     onChange={e => setDobMonth(e.target.value)}
-                    className="flex-1 rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    disabled={signUpLoading}
+                    className="flex-1 rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
                   >
                     {MONTHS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                   </select>
@@ -431,7 +495,8 @@ const Onboarding = () => {
                     placeholder="YYYY"
                     min="1900"
                     max={new Date().getFullYear()}
-                    className="w-24 rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    disabled={signUpLoading}
+                    className="w-24 rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
                   />
                 </div>
               </div>
@@ -443,6 +508,7 @@ const Onboarding = () => {
                   id="terms"
                   checked={agreedToTerms}
                   onChange={e => setAgreedToTerms(e.target.checked)}
+                  disabled={signUpLoading}
                   className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer"
                 />
                 <label htmlFor="terms" className="text-sm text-muted-foreground leading-snug cursor-pointer">
@@ -469,74 +535,74 @@ const Onboarding = () => {
                 Your data stays yours. We will never sell it or share it with
                 anyone, ever.
               </p>
+
+              {/* Sign up errors */}
+              {signUpError === 'exists' && (
+                <p className="text-sm text-destructive/80">
+                  An account with this email already exists.{' '}
+                  <button
+                    type="button"
+                    onClick={() => navigate('/signin')}
+                    className="underline underline-offset-2 hover:text-destructive"
+                  >
+                    Sign in instead?
+                  </button>
+                </p>
+              )}
+              {signUpError === 'generic' && (
+                <p className="text-sm text-destructive/80">
+                  Something went wrong, please try again.
+                </p>
+              )}
             </div>
 
             <Button
               className="w-full"
-              disabled={!signUpValid}
-              onClick={() => setScreen(2)}
+              disabled={!signUpValid || signUpLoading}
+              onClick={handleSignUp}
             >
-              Continue
+              {signUpLoading ? (
+                <><Loader2 className="animate-spin" /> Creating your account...</>
+              ) : (
+                'Continue'
+              )}
             </Button>
           </div>
         )}
 
         {/* ════════════════════════════════════
-            SCREEN 2 — CONFIRM SIGN UP
+            SCREEN 2 — CONFIRM SIGN UP (magic link)
             ════════════════════════════════════ */}
         {screen === 2 && (
-          <div className="flex-1 flex flex-col gap-8">
-            <div>
-              <h1 className="text-2xl font-bold mb-2">Check your email</h1>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                We've sent a 6-digit code to{' '}
-                <span className="font-medium text-foreground">{email}</span>.
-                Enter it below to confirm.
-              </p>
+          <div className="flex-1 flex flex-col items-center justify-center gap-8 text-center">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
+              <Mail className="h-8 w-8 text-primary" />
             </div>
 
-            {/* 6-digit OTP boxes */}
-            <div className="flex gap-3 justify-center">
-              {code.map((digit, i) => (
-                <input
-                  key={i}
-                  ref={el => { codeRefs.current[i] = el; }}
-                  type="text"
-                  inputMode="numeric"
-                  maxLength={2}
-                  value={digit}
-                  onChange={e => handleCodeChange(i, e.target.value)}
-                  onKeyDown={e => handleCodeKeyDown(i, e)}
-                  className="h-14 w-11 rounded-md border-2 bg-background text-center text-xl font-bold focus:outline-none focus:border-primary focus:ring-2 focus:ring-ring transition-colors"
-                />
-              ))}
+            <div className="space-y-3 max-w-sm">
+              <h1 className="text-2xl font-bold">Check your email</h1>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                We've sent a confirmation link to{' '}
+                <span className="font-medium text-foreground">{email}</span>.
+                Click it to verify your account, then come back here.
+              </p>
             </div>
 
             <div className="flex flex-col items-center gap-3 text-sm">
               <button
                 type="button"
-                onClick={() => toast('Coming soon.')}
+                onClick={handleResend}
                 className="text-muted-foreground underline underline-offset-2 hover:text-foreground transition-colors"
               >
-                Resend code
+                Didn't get it? Resend link
               </button>
               <button
                 type="button"
-                onClick={() => { setCode(['', '', '', '', '', '']); setScreen(1); }}
+                onClick={() => setScreen(1)}
                 className="text-muted-foreground underline underline-offset-2 hover:text-foreground transition-colors"
               >
                 Wrong email? Go back
               </button>
-            </div>
-
-            <div className="mt-auto">
-              <Button
-                className="w-full"
-                disabled={!codeComplete}
-                onClick={() => setScreen(3)}
-              >
-                Confirm
-              </Button>
             </div>
           </div>
         )}
