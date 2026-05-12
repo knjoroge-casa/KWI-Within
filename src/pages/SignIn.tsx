@@ -4,6 +4,7 @@ import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useAuth } from '@/contexts/AuthContext';
 
 const VisualPanel = ({ children }: { children: React.ReactNode }) => (
   <div className="relative h-full w-full overflow-hidden">
@@ -25,12 +26,31 @@ const VisualPanel = ({ children }: { children: React.ReactNode }) => (
   </div>
 );
 
+function friendlyError(raw: string): string {
+  const msg = raw.toLowerCase();
+  if (msg.includes('invalid login') || msg.includes('invalid credentials') || msg.includes('wrong password')) {
+    return 'Invalid email or password';
+  }
+  if (msg.includes('email not confirmed') || msg.includes('confirm your email')) {
+    return 'Please confirm your email first';
+  }
+  return 'Something went wrong, please try again';
+}
+
 const SignIn = () => {
   const navigate = useNavigate();
+  const { signIn, isAuthenticated, hasCompletedOnboarding, loading: authLoading } = useAuth();
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
-  const [loading, setLoading] = useState(false);
+  const [errors, setErrors] = useState<{ email?: string; password?: string; form?: string }>({});
+  const [submitting, setSubmitting] = useState(false);
+
+  // Redirect if already authenticated — wait for auth to finish initialising
+  if (!authLoading && isAuthenticated) {
+    navigate(hasCompletedOnboarding ? '/dashboard' : '/onboarding', { replace: true });
+    return null;
+  }
 
   const validate = () => {
     const next: typeof errors = {};
@@ -41,16 +61,21 @@ const SignIn = () => {
     return Object.keys(next).length === 0;
   };
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
-    setLoading(true);
-    console.log('Sign in:', { email, password });
-    setTimeout(() => {
-      setLoading(false);
-      console.log('Signed in (stub)');
-    }, 1200);
+    setSubmitting(true);
+    setErrors({});
+    const { error } = await signIn(email.trim(), password);
+    if (error) {
+      setErrors({ form: friendlyError(error) });
+      setSubmitting(false);
+    } else {
+      navigate('/dashboard', { replace: true });
+    }
   };
+
+  const disabled = submitting || authLoading;
 
   return (
     <div className="min-h-screen bg-background lg:grid lg:grid-cols-2">
@@ -87,6 +112,7 @@ const SignIn = () => {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 aria-invalid={!!errors.email}
+                disabled={disabled}
                 className="h-11"
               />
               {errors.email && (
@@ -103,6 +129,7 @@ const SignIn = () => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 aria-invalid={!!errors.password}
+                disabled={disabled}
                 className="h-11"
               />
               {errors.password && (
@@ -111,7 +138,7 @@ const SignIn = () => {
               <div className="text-right">
                 <button
                   type="button"
-                  onClick={() => console.log('Forgot password clicked')}
+                  onClick={() => navigate('/reset-password')}
                   className="text-sm text-primary hover:underline underline-offset-4"
                 >
                   Forgot password?
@@ -119,8 +146,12 @@ const SignIn = () => {
               </div>
             </div>
 
-            <Button type="submit" disabled={loading} className="w-full h-11">
-              {loading ? (
+            {errors.form && (
+              <p className="text-sm text-destructive/80">{errors.form}</p>
+            )}
+
+            <Button type="submit" disabled={disabled} className="w-full h-11">
+              {submitting ? (
                 <>
                   <Loader2 className="animate-spin" />
                   Signing you in...
