@@ -155,8 +155,8 @@ const inputDisabledCls =
 // ── Main component ─────────────────────────────────────────────
 
 const Onboarding = () => {
-  const { profile, setProfile, onboarded, setOnboarded } = useApp();
-  const { signUp, isAuthenticated, hasCompletedOnboarding, loading: authLoading, user } = useAuth();
+  const { onboarded, setOnboarded } = useApp();
+  const { signUp, isAuthenticated, hasCompletedOnboarding, loading: authLoading, user, refreshProfile } = useAuth();
   const navigate = useNavigate();
 
   // ── Screen (0=Welcome … 7=Closing) ──
@@ -175,6 +175,10 @@ const Onboarding = () => {
   // ── Sign up async state ──
   const [signUpLoading, setSignUpLoading] = useState(false);
   const [signUpError, setSignUpError] = useState<'exists' | 'generic' | null>(null);
+
+  // ── Finish async state ──
+  const [finishLoading, setFinishLoading] = useState(false);
+  const [finishError, setFinishError] = useState(false);
 
   // ── Step 1 — Body ──
   const [fibroids, setFibroids] = useState('');
@@ -295,6 +299,34 @@ const Onboarding = () => {
     toast('Confirmation email resent.');
   };
 
+  // ── Build Supabase update payload from current state ──
+  const buildUpdatePayload = () => {
+    const cycleMap: Record<string, 'regular' | 'irregular' | 'no_cycle'> = {
+      yes: 'regular', irregular: 'irregular', no: 'no_cycle',
+    };
+    return {
+      has_fibroids:              (fibroids as 'no' | 'yes' | 'suspected' | 'removed') || null,
+      hormonal_treatment:        hormonalOn === 'yes' ? true : hormonalOn === 'no' ? false : null,
+      hormonal_treatment_type:   hormonalOn === 'yes' ? (hormonalDetail.trim() || null) : null,
+      diagnosed_conditions:      conditions.filter(c => c !== 'other').length > 0
+                                   ? conditions.filter(c => c !== 'other') : null,
+      diagnosed_conditions_other: conditions.includes('other') ? (conditionsOther.trim() || null) : null,
+      perimenopause_status:      (perimenopause as 'yes' | 'suspected' | 'no' | 'unsure') || null,
+      cycle_regularity:          regularCycle ? (cycleMap[regularCycle] ?? null) : null,
+      joint_conditions:          joints === 'yes' ? true : joints === 'no' ? false : null,
+      joint_conditions_detail:   joints === 'yes' ? (jointsDetail.trim() || null) : null,
+      exercises_regularly:       exerciseReg === 'yes' ? true : exerciseReg === 'no' ? false : null,
+      exercise_types:            exerciseTypes.filter(t => t !== 'other').length > 0
+                                   ? exerciseTypes.filter(t => t !== 'other') : null,
+      exercise_types_other:      exerciseTypes.includes('other') ? (exerciseOther.trim() || null) : null,
+      tracks_food:               tracksFood === 'yes' ? true : tracksFood === 'no' ? false : null,
+      stress_baseline:           (stress as 'low' | 'moderate' | 'high') || null,
+      tracking_goals:            goals.length > 0 ? goals : null,
+      onboarding_completed:      true,
+      updated_at:                new Date().toISOString(),
+    };
+  };
+
   // ── Skip handlers ──
   const handleSkip4 = () => {
     setFibroids(''); setHormonalOn(''); setHormonalDetail('');
@@ -308,35 +340,39 @@ const Onboarding = () => {
     setTracksFood(''); setStress('');
     setScreen(6);
   };
-  const handleSkip6 = () => { setGoals([]); setScreen(7); };
+  const handleSkip6 = async () => {
+    if (!user) { setGoals([]); setScreen(7); return; }
+    setFinishLoading(true);
+    const payload = { ...buildUpdatePayload(), tracking_goals: null };
+    setGoals([]);
+    await supabase.from('user_profile').update(payload).eq('id', user.id);
+    await refreshProfile();
+    setFinishLoading(false);
+    setScreen(7);
+  };
 
-  const skipHandlers: Record<number, () => void> = { 4: handleSkip4, 5: handleSkip5, 6: handleSkip6 };
+  const skipHandlers: Record<number, () => void | Promise<void>> = {
+    4: handleSkip4, 5: handleSkip5, 6: handleSkip6,
+  };
 
   // ── Finish ──
-  const handleFinish = () => {
-    const condList = conditions.includes('other') && conditionsOther.trim()
-      ? [...conditions.filter(c => c !== 'other'), conditionsOther.trim()]
-      : conditions;
-
-    setProfile({
-      ...profile,
-      name: firstName.trim(),
-      birthday: dobYear ? `${dobYear}-${dobMonth}-01` : profile.birthday,
-      has_fibroids:          (fibroids     as typeof profile.has_fibroids)          || 'no',
-      hormonal_treatment:    hormonalOn === 'yes' ? (hormonalDetail.trim() || 'yes') : 'none',
-      diagnosed_conditions:  condList,
-      perimenopause_status:  (perimenopause as typeof profile.perimenopause_status)  || 'unsure',
-      has_regular_cycle:     (regularCycle  as typeof profile.has_regular_cycle)     || 'irregular',
-      joint_conditions:      joints === 'yes',
-      joint_conditions_detail: jointsDetail.trim(),
-      exercises_regularly:   exerciseReg === 'yes',
-      exercise_types:        exerciseTypes,
-      tracks_food:           tracksFood === 'yes',
-      stress_baseline:       (stress as typeof profile.stress_baseline)              || 'moderate',
-      tracking_goals:        goals,
-    });
-    setOnboarded(true);
-    navigate('/');
+  const handleFinish = async () => {
+    if (!user) return;
+    setFinishLoading(true);
+    setFinishError(false);
+    const { error } = await supabase
+      .from('user_profile')
+      .update(buildUpdatePayload())
+      .eq('id', user.id);
+    if (error) {
+      console.error('[Onboarding finish error]', error);
+      setFinishError(true);
+      setFinishLoading(false);
+      return;
+    }
+    await refreshProfile();
+    setFinishLoading(false);
+    setScreen(7);
   };
 
   // ── Layout helpers ──
@@ -364,7 +400,13 @@ const Onboarding = () => {
               <button
                 type="button"
                 onClick={skipHandlers[screen]}
-                className="shrink-0 text-sm text-muted-foreground/60 hover:text-muted-foreground transition-colors pt-0.5"
+                disabled={screen === 6 && finishLoading}
+                className={cn(
+                  'shrink-0 text-sm transition-colors pt-0.5',
+                  screen === 6 && finishLoading
+                    ? 'text-muted-foreground/30 cursor-not-allowed'
+                    : 'text-muted-foreground/60 hover:text-muted-foreground',
+                )}
               >
                 Skip
               </button>
@@ -899,12 +941,25 @@ const Onboarding = () => {
               />
             </div>
 
+            {finishError && (
+              <p className="text-sm text-destructive/80 text-center">
+                Something went wrong saving your answers.{' '}
+                <button
+                  type="button"
+                  onClick={handleFinish}
+                  className="underline underline-offset-2 hover:text-destructive"
+                >
+                  Try again?
+                </button>
+              </p>
+            )}
+
             <div className="flex gap-3 pt-2">
-              <Button variant="outline" className="flex-1" onClick={() => setScreen(5)}>
+              <Button variant="outline" className="flex-1" onClick={() => setScreen(5)} disabled={finishLoading}>
                 Back
               </Button>
-              <Button className="flex-1" onClick={() => setScreen(7)}>
-                Finish
+              <Button className="flex-1" onClick={handleFinish} disabled={finishLoading}>
+                {finishLoading ? <><Loader2 className="animate-spin" /> Saving...</> : 'Finish'}
               </Button>
             </div>
           </div>
@@ -926,7 +981,7 @@ const Onboarding = () => {
                 Log when you can. Even partial entries are useful.
               </p>
             </div>
-            <Button className="w-full max-w-sm" onClick={handleFinish}>
+            <Button className="w-full max-w-sm" onClick={() => { setOnboarded(true); navigate('/'); }}>
               Take me to my dashboard →
             </Button>
           </div>

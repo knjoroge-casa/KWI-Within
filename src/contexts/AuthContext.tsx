@@ -15,6 +15,7 @@ interface AuthState {
   signUp: (email: string, password: string, metadata?: Record<string, unknown>) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ error: string | null }>;
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -86,6 +87,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return { error: error?.message ?? null };
   };
 
+  const refreshProfile = async () => {
+    if (!user) return;
+    const updated = await fetchProfile(user.id);
+    setProfile(updated);
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -98,6 +105,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         signUp,
         signOut,
         resetPassword,
+        refreshProfile,
       }}
     >
       {children}
