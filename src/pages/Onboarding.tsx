@@ -272,6 +272,7 @@ const Onboarding = () => {
     });
     setSignUpLoading(false);
     if (error) {
+      console.error('[SignUp error]', error);
       const lower = error.toLowerCase();
       if (lower.includes('already registered') || lower.includes('already exists')) {
         setSignUpError('exists');
