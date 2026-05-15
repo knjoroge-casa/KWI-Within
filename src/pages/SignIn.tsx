@@ -1,5 +1,5 @@
 import { useState, FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, Navigate } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -46,10 +46,16 @@ const SignIn = () => {
   const [errors, setErrors] = useState<{ email?: string; password?: string; form?: string }>({});
   const [submitting, setSubmitting] = useState(false);
 
-  // Redirect if already authenticated — wait for auth to finish initialising
-  if (!authLoading && isAuthenticated) {
-    navigate(hasCompletedOnboarding ? '/dashboard' : '/onboarding', { replace: true });
-    return null;
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <p className="text-muted-foreground text-sm">Loading…</p>
+      </div>
+    );
+  }
+
+  if (isAuthenticated) {
+    return <Navigate to={hasCompletedOnboarding ? '/dashboard' : '/onboarding'} replace />;
   }
 
   const validate = () => {
@@ -75,7 +81,7 @@ const SignIn = () => {
     }
   };
 
-  const disabled = submitting || authLoading;
+  const disabled = submitting;
 
   return (
     <div className="min-h-screen bg-background lg:grid lg:grid-cols-2">

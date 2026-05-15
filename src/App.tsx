@@ -1,11 +1,12 @@
-import { useEffect } from "react";
+import { ReactNode, useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes, Navigate, useLocation } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { AppProvider, useApp } from "@/contexts/AppContext";
-import { AuthProvider } from "@/contexts/AuthContext";
+import { AppProvider } from "@/contexts/AppContext";
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { AskKWIButton } from "@/components/insights/AskKWIButton";
 import Dashboard from "./pages/Dashboard";
@@ -26,33 +27,44 @@ function ScrollToTop() {
   return null;
 }
 
+const LoadingScreen = () => (
+  <div className="min-h-screen flex items-center justify-center bg-background">
+    <p className="text-muted-foreground text-sm">Loading…</p>
+  </div>
+);
+
+const RootRedirect = () => {
+  const { loading, isAuthenticated, hasCompletedOnboarding, user, profile } = useAuth();
+  if (loading || (user && profile === null)) return <LoadingScreen />;
+  if (isAuthenticated && hasCompletedOnboarding) return <Navigate to="/dashboard" replace />;
+  if (isAuthenticated) return <Navigate to="/onboarding" replace />;
+  return <Navigate to="/signin" replace />;
+};
+
+const OnboardingGuard = ({ children }: { children: ReactNode }) => {
+  const { loading, isAuthenticated, hasCompletedOnboarding, user, profile } = useAuth();
+  if (loading || (user && profile === null)) return <LoadingScreen />;
+  if (isAuthenticated && hasCompletedOnboarding) return <Navigate to="/dashboard" replace />;
+  return <>{children}</>;
+};
+
 const AppRoutes = () => {
-  const { onboarded } = useApp();
-
-  if (!onboarded) {
-    return (
-      <Routes>
-        <Route path="/signin" element={<SignIn />} />
-        <Route path="/onboarding" element={<Onboarding />} />
-        <Route path="*" element={<Navigate to="/onboarding" replace />} />
-      </Routes>
-    );
-  }
-
+  const { isAuthenticated, hasCompletedOnboarding } = useAuth();
   return (
     <>
       <Routes>
-        <Route path="/" element={<AppLayout><Dashboard /></AppLayout>} />
-        <Route path="/log" element={<AppLayout><DailyLog /></AppLayout>} />
-        <Route path="/records" element={<AppLayout><Records /></AppLayout>} />
-        <Route path="/insights" element={<AppLayout><Insights /></AppLayout>} />
-        <Route path="/doctor-report" element={<AppLayout><DoctorReport /></AppLayout>} />
-        <Route path="/settings" element={<AppLayout><Settings /></AppLayout>} />
-        <Route path="/onboarding" element={<Onboarding />} />
+        <Route path="/" element={<RootRedirect />} />
         <Route path="/signin" element={<SignIn />} />
+        <Route path="/onboarding" element={<OnboardingGuard><Onboarding /></OnboardingGuard>} />
+        <Route path="/dashboard" element={<ProtectedRoute><AppLayout><Dashboard /></AppLayout></ProtectedRoute>} />
+        <Route path="/log" element={<ProtectedRoute><AppLayout><DailyLog /></AppLayout></ProtectedRoute>} />
+        <Route path="/records" element={<ProtectedRoute><AppLayout><Records /></AppLayout></ProtectedRoute>} />
+        <Route path="/insights" element={<ProtectedRoute><AppLayout><Insights /></AppLayout></ProtectedRoute>} />
+        <Route path="/doctor-report" element={<ProtectedRoute><AppLayout><DoctorReport /></AppLayout></ProtectedRoute>} />
+        <Route path="/settings" element={<ProtectedRoute><AppLayout><Settings /></AppLayout></ProtectedRoute>} />
         <Route path="*" element={<NotFound />} />
       </Routes>
-      <AskKWIButton />
+      {isAuthenticated && hasCompletedOnboarding && <AskKWIButton />}
     </>
   );
 };

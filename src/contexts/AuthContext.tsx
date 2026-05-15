@@ -44,13 +44,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
-        setUser(session?.user ?? null);
-        if (session?.user) {
-          setProfile(await fetchProfile(session.user.id));
-        } else {
-          setProfile(null);
+        const currentUser = session?.user ?? null;
+        setUser(currentUser);
+        if (!currentUser) setProfile(null);
+        setLoading(false); // auth state is known — unblock routing
+        if (currentUser) {
+          setProfile(await fetchProfile(currentUser.id));
         }
-        setLoading(false);
       },
     );
 

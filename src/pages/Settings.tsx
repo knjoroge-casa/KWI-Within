@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import { useApp } from '@/contexts/AppContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import {
   User, Heart, Bell, Upload, Monitor, Shield,
@@ -134,6 +135,7 @@ const SECTIONS: { id: SectionId; label: string; icon: React.ElementType }[] = [
 
 const Settings = () => {
   const { profile, setProfile } = useApp();
+  const { signOut } = useAuth();
   const navigate = useNavigate();
 
   const [openSection, setOpenSection] = useState<SectionId | null>(null);
@@ -806,7 +808,7 @@ const Settings = () => {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => { setSignOutOpen(false); toast('Coming soon.'); }}
+              onClick={async () => { setSignOutOpen(false); await signOut(); navigate('/signin', { replace: true }); }}
             >
               Sign out
             </AlertDialogAction>
