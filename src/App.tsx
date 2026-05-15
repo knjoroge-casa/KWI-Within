@@ -17,6 +17,7 @@ import DoctorReport from "./pages/DoctorReport";
 import Settings from "./pages/Settings";
 import Onboarding from "./pages/Onboarding";
 import SignIn from "./pages/SignIn";
+import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -55,6 +56,7 @@ const AppRoutes = () => {
       <Routes>
         <Route path="/" element={<RootRedirect />} />
         <Route path="/signin" element={<SignIn />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/onboarding" element={<OnboardingGuard><Onboarding /></OnboardingGuard>} />
         <Route path="/dashboard" element={<ProtectedRoute><AppLayout><Dashboard /></AppLayout></ProtectedRoute>} />
         <Route path="/log" element={<ProtectedRoute><AppLayout><DailyLog /></AppLayout></ProtectedRoute>} />
