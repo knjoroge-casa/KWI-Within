@@ -1,11 +1,11 @@
-import { useState, useRef } from 'react';
-import { useApp } from '@/contexts/AppContext';
+import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { supabase } from '@/lib/supabase';
 import {
   User, Heart, Bell, Upload, Monitor, Shield,
   Key, Info, ChevronRight, LogOut, FileText,
-  Download, Pencil,
+  Download, Pencil, Loader2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -16,6 +16,16 @@ import {
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { format } from 'date-fns';
+
+// ── Theme helper ───────────────────────────────────────────────
+
+const applyTheme = (t: 'light' | 'dark' | 'system') => {
+  const root = document.documentElement;
+  if (t === 'dark') root.classList.add('dark');
+  else if (t === 'light') root.classList.remove('dark');
+  else root.classList.toggle('dark', window.matchMedia('(prefers-color-scheme: dark)').matches);
+};
 
 // ── Shared pill pickers ────────────────────────────────────────
 
@@ -30,6 +40,7 @@ const OptionPicker = ({
     {options.map(o => (
       <button
         key={o.value}
+        type="button"
         onClick={() => onChange(o.value)}
         className={cn(
           'rounded-full px-4 py-2 text-sm border transition-colors',
@@ -55,6 +66,7 @@ const MultiSelect = ({
     {options.map(o => (
       <button
         key={o.value}
+        type="button"
         onClick={() =>
           onChange(
             selected.includes(o.value)
@@ -74,6 +86,31 @@ const MultiSelect = ({
     ))}
   </div>
 );
+
+// ── Password requirements ──────────────────────────────────────
+
+const PasswordReqs = ({ password }: { password: string }) => {
+  const checks = [
+    { label: 'At least 8 characters', ok: password.length >= 8 },
+    { label: 'One uppercase letter',  ok: /[A-Z]/.test(password) },
+    { label: 'One number',            ok: /[0-9]/.test(password) },
+    { label: 'One special character', ok: /[^A-Za-z0-9]/.test(password) },
+  ];
+  return (
+    <div className="mt-2 space-y-1">
+      {checks.map(c => (
+        <div key={c.label} className="flex items-center gap-2">
+          <span className={cn('text-xs w-3 text-center', c.ok ? 'text-green-600' : 'text-muted-foreground')}>
+            {c.ok ? '✓' : '○'}
+          </span>
+          <span className={cn('text-xs', c.ok ? 'text-green-600' : 'text-muted-foreground')}>
+            {c.label}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+};
 
 // ── Slide-up overlay wrapper ───────────────────────────────────
 
@@ -133,9 +170,16 @@ const SECTIONS: { id: SectionId; label: string; icon: React.ElementType }[] = [
   { id: 'about',         label: 'About',              icon: Info },
 ];
 
+// Appointment lead-time display labels ↔ DB enum values
+const LEAD_OPTIONS: { value: string; label: string }[] = [
+  { value: '1_day',   label: '1 day'   },
+  { value: '3_days',  label: '3 days'  },
+  { value: '1_week',  label: '1 week'  },
+  { value: '2_weeks', label: '2 weeks' },
+];
+
 const Settings = () => {
-  const { profile, setProfile } = useApp();
-  const { signOut } = useAuth();
+  const { user, profile: authProfile, signOut, refreshProfile } = useAuth();
   const navigate = useNavigate();
 
   const [openSection, setOpenSection] = useState<SectionId | null>(null);
@@ -143,25 +187,72 @@ const Settings = () => {
   const close = () => setOpenSection(null);
 
   // ── Profile ──
-  const [firstName, setFirstName] = useState('Kui');
-  const [lastInitial, setLastInitial] = useState('N');
-  const [dobMonth, setDobMonth] = useState('06');
-  const [dobYear, setDobYear] = useState('1983');
+  const [firstName, setFirstName] = useState('');
+  const [lastInitial, setLastInitial] = useState('');
+  const [dobMonth, setDobMonth] = useState('01');
+  const [dobYear, setDobYear] = useState('');
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [photoError, setPhotoError] = useState('');
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => {
+    if (!authProfile) return;
+    setFirstName(authProfile.first_name ?? '');
+    setLastInitial(authProfile.last_initial ?? '');
+    setDobMonth(authProfile.date_of_birth_month ? String(authProfile.date_of_birth_month).padStart(2, '0') : '01');
+    setDobYear(authProfile.date_of_birth_year ? String(authProfile.date_of_birth_year) : '');
+    setPhotoUrl(authProfile.avatar_url ?? null);
+  }, [authProfile?.id]);
+
   // ── Health Context ──
-  const [fibroids, setFibroids] = useState(profile.has_fibroids);
-  const [perimenopause, setPerimenopause] = useState(profile.perimenopause_status);
-  const [cycle, setCycle] = useState(profile.has_regular_cycle);
-  const [conditions, setConditions] = useState(profile.diagnosed_conditions);
-  const [hormonal, setHormonal] = useState(profile.hormonal_treatment);
-  const [joints, setJoints] = useState(profile.joint_conditions);
-  const [exerciseReg, setExerciseReg] = useState(profile.exercises_regularly);
-  const [exerciseTypes, setExerciseTypes] = useState(profile.exercise_types);
-  const [stress, setStress] = useState(profile.stress_baseline);
-  const [goals, setGoals] = useState(profile.tracking_goals);
+  const [fibroids, setFibroids] = useState('');
+  const [hormonalOn, setHormonalOn] = useState('');
+  const [hormonalDetail, setHormonalDetail] = useState('');
+  const [conditions, setConditions] = useState<string[]>([]);
+  const [conditionsOther, setConditionsOther] = useState('');
+  const [perimenopause, setPerimenopause] = useState('');
+  const [regularCycle, setRegularCycle] = useState('');
+  const [joints, setJoints] = useState('');
+  const [jointsDetail, setJointsDetail] = useState('');
+  const [exerciseReg, setExerciseReg] = useState('');
+  const [exerciseTypes, setExerciseTypes] = useState<string[]>([]);
+  const [exerciseOther, setExerciseOther] = useState('');
+  const [tracksFood, setTracksFood] = useState('');
+  const [stress, setStress] = useState('');
+  const [goals, setGoals] = useState<string[]>([]);
+  const [healthSaving, setHealthSaving] = useState(false);
+
+  // Map DB cycle_regularity → UI value
+  const cycleRegToUi = (v: string | null) => {
+    if (v === 'regular') return 'yes';
+    if (v === 'no_cycle') return 'no';
+    return v ?? '';
+  };
+
+  useEffect(() => {
+    if (!authProfile) return;
+    setFibroids(authProfile.has_fibroids ?? '');
+    setHormonalOn(authProfile.hormonal_treatment === true ? 'yes' : authProfile.hormonal_treatment === false ? 'no' : '');
+    setHormonalDetail(authProfile.hormonal_treatment_type ?? '');
+    const dbConds = authProfile.diagnosed_conditions ?? [];
+    const other = authProfile.diagnosed_conditions_other ?? '';
+    setConditions(other ? [...dbConds, 'other'] : dbConds);
+    setConditionsOther(other);
+    setPerimenopause(authProfile.perimenopause_status ?? '');
+    setRegularCycle(cycleRegToUi(authProfile.cycle_regularity ?? null));
+    setJoints(authProfile.joint_conditions === true ? 'yes' : authProfile.joint_conditions === false ? 'no' : '');
+    setJointsDetail(authProfile.joint_conditions_detail ?? '');
+    setExerciseReg(authProfile.exercises_regularly === true ? 'yes' : authProfile.exercises_regularly === false ? 'no' : '');
+    const dbExTypes = authProfile.exercise_types ?? [];
+    const exOther = authProfile.exercise_types_other ?? '';
+    setExerciseTypes(exOther ? [...dbExTypes, 'other'] : dbExTypes);
+    setExerciseOther(exOther);
+    setTracksFood(authProfile.tracks_food === true ? 'yes' : authProfile.tracks_food === false ? 'no' : '');
+    setStress(authProfile.stress_baseline ?? '');
+    setGoals(authProfile.tracking_goals ?? []);
+  }, [authProfile?.id]);
 
   // ── Notifications ──
   const [morningOn, setMorningOn] = useState(false);
@@ -169,59 +260,229 @@ const Settings = () => {
   const [eveningOn, setEveningOn] = useState(false);
   const [eveningTime, setEveningTime] = useState('21:00');
   const [weeklyInsightOn, setWeeklyInsightOn] = useState(true);
-  const [appointmentOn, setAppointmentOn] = useState(true);
-  const [appointmentLead, setAppointmentLead] = useState('3 days');
+  const [appointmentOn, setAppointmentOn] = useState(false);
+  const [appointmentLead, setAppointmentLead] = useState('3_days');
+  const [notifSaving, setNotifSaving] = useState(false);
+
+  useEffect(() => {
+    if (!authProfile) return;
+    setMorningOn(authProfile.morning_reminder_enabled ?? false);
+    setMorningTime(authProfile.morning_reminder_time ?? '08:00');
+    setEveningOn(authProfile.evening_reminder_enabled ?? false);
+    setEveningTime(authProfile.evening_reminder_time ?? '21:00');
+    setWeeklyInsightOn(authProfile.weekly_insight_enabled ?? true);
+    setAppointmentOn(authProfile.appointment_reminders_enabled ?? false);
+    setAppointmentLead(authProfile.appointment_reminder_lead_time ?? '3_days');
+  }, [authProfile?.id]);
 
   // ── Display ──
   const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('system');
+  const [themeSaving, setThemeSaving] = useState(false);
+
+  useEffect(() => {
+    if (!authProfile) return;
+    const t = (authProfile.theme ?? 'system') as 'light' | 'dark' | 'system';
+    setTheme(t);
+  }, [authProfile?.id]);
 
   // ── Privacy ──
   const [deleteFrom, setDeleteFrom] = useState('');
   const [deleteTo, setDeleteTo] = useState('');
   const [deleteLogsOpen, setDeleteLogsOpen] = useState(false);
+  const [deleteLogsBusy, setDeleteLogsBusy] = useState(false);
   const [deleteAccountStep, setDeleteAccountStep] = useState(0);
   const [deleteAccountEmail, setDeleteAccountEmail] = useState('');
+  const [deleteAccountBusy, setDeleteAccountBusy] = useState(false);
+
+  // ── Account — change password ──
+  const [changePwOpen, setChangePwOpen] = useState(false);
+  const [newPw, setNewPw] = useState('');
+  const [confirmNewPw, setConfirmNewPw] = useState('');
+  const [pwSaving, setPwSaving] = useState(false);
+  const [pwError, setPwError] = useState<string | null>(null);
 
   // ── Sign out ──
   const [signOutOpen, setSignOutOpen] = useState(false);
 
   // ── Handlers ──
-  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+
+  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 1024 * 1024) {
-      setPhotoError('Photo must be under 1MB.');
+    if (!file || !user) return;
+    if (file.size > 2 * 1024 * 1024) {
+      setPhotoError('Photo must be under 2MB.');
       return;
     }
     setPhotoError('');
-    setPhotoUrl(URL.createObjectURL(file));
+    setPhotoUploading(true);
+    const ext = file.name.split('.').pop() ?? 'jpg';
+    const path = `${user.id}/avatar.${ext}`;
+    const { error: uploadError } = await supabase.storage
+      .from('avatars')
+      .upload(path, file, { upsert: true, contentType: file.type });
+    if (uploadError) {
+      setPhotoError('Upload failed. Please try again.');
+      setPhotoUploading(false);
+      return;
+    }
+    const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path);
+    await supabase.from('user_profile').update({ avatar_url: publicUrl }).eq('id', user.id);
+    await refreshProfile();
+    setPhotoUrl(publicUrl);
+    setPhotoUploading(false);
   };
 
-  const handleRemovePhoto = () => {
+  const handleRemovePhoto = async () => {
     setPhotoUrl(null);
     setPhotoError('');
     if (fileInputRef.current) fileInputRef.current.value = '';
+    if (!user) return;
+    await supabase.from('user_profile').update({ avatar_url: null }).eq('id', user.id);
+    await refreshProfile();
   };
 
-  const handleSaveHealth = () => {
-    setProfile({
-      ...profile,
-      has_fibroids: fibroids,
-      perimenopause_status: perimenopause,
-      has_regular_cycle: cycle,
-      diagnosed_conditions: conditions,
-      hormonal_treatment: hormonal,
-      joint_conditions: joints,
-      exercises_regularly: exerciseReg,
-      exercise_types: exerciseTypes,
-      stress_baseline: stress,
-      tracking_goals: goals,
-    });
+  const handleSaveProfile = async () => {
+    if (!user) return;
+    setProfileSaving(true);
+    await supabase.from('user_profile').update({
+      first_name: firstName.trim() || null,
+      last_initial: lastInitial.trim() || null,
+      date_of_birth_month: dobMonth ? parseInt(dobMonth, 10) : null,
+      date_of_birth_year: dobYear ? parseInt(dobYear, 10) : null,
+      updated_at: new Date().toISOString(),
+    }).eq('id', user.id);
+    await refreshProfile();
+    setProfileSaving(false);
+    toast.success('Profile saved.');
+    close();
+  };
+
+  const handleSaveHealth = async () => {
+    if (!user) return;
+    setHealthSaving(true);
+    const cycleMap: Record<string, 'regular' | 'irregular' | 'no_cycle'> = {
+      yes: 'regular', irregular: 'irregular', no: 'no_cycle',
+    };
+    await supabase.from('user_profile').update({
+      has_fibroids: (fibroids as 'no' | 'yes' | 'suspected' | 'removed') || null,
+      hormonal_treatment: hormonalOn === 'yes' ? true : hormonalOn === 'no' ? false : null,
+      hormonal_treatment_type: hormonalOn === 'yes' ? (hormonalDetail.trim() || null) : null,
+      diagnosed_conditions: conditions.filter(c => c !== 'other').length > 0 ? conditions.filter(c => c !== 'other') : null,
+      diagnosed_conditions_other: conditions.includes('other') ? (conditionsOther.trim() || null) : null,
+      perimenopause_status: (perimenopause as 'yes' | 'suspected' | 'no' | 'unsure') || null,
+      cycle_regularity: regularCycle ? (cycleMap[regularCycle] ?? null) : null,
+      joint_conditions: joints === 'yes' ? true : joints === 'no' ? false : null,
+      joint_conditions_detail: joints === 'yes' ? (jointsDetail.trim() || null) : null,
+      exercises_regularly: exerciseReg === 'yes' ? true : exerciseReg === 'no' ? false : null,
+      exercise_types: exerciseTypes.filter(t => t !== 'other').length > 0 ? exerciseTypes.filter(t => t !== 'other') : null,
+      exercise_types_other: exerciseTypes.includes('other') ? (exerciseOther.trim() || null) : null,
+      tracks_food: tracksFood === 'yes' ? true : tracksFood === 'no' ? false : null,
+      stress_baseline: (stress as 'low' | 'moderate' | 'high') || null,
+      tracking_goals: goals.length > 0 ? goals : null,
+      updated_at: new Date().toISOString(),
+    }).eq('id', user.id);
+    await refreshProfile();
+    setHealthSaving(false);
     toast.success('Health context updated.');
     close();
   };
 
+  const handleSaveNotifications = async () => {
+    if (!user) return;
+    setNotifSaving(true);
+    await supabase.from('user_profile').update({
+      morning_reminder_enabled: morningOn,
+      morning_reminder_time: morningOn ? morningTime : null,
+      evening_reminder_enabled: eveningOn,
+      evening_reminder_time: eveningOn ? eveningTime : null,
+      weekly_insight_enabled: weeklyInsightOn,
+      appointment_reminders_enabled: appointmentOn,
+      appointment_reminder_lead_time: appointmentOn ? (appointmentLead as '1_day' | '3_days' | '1_week' | '2_weeks') : null,
+      updated_at: new Date().toISOString(),
+    }).eq('id', user.id);
+    await refreshProfile();
+    setNotifSaving(false);
+    toast.success('Notification preferences saved.');
+    close();
+  };
+
+  const handleThemeChange = async (t: 'light' | 'dark' | 'system') => {
+    setTheme(t);
+    applyTheme(t);
+    if (!user) return;
+    setThemeSaving(true);
+    await supabase.from('user_profile').update({
+      theme: t,
+      updated_at: new Date().toISOString(),
+    }).eq('id', user.id);
+    await refreshProfile();
+    setThemeSaving(false);
+  };
+
+  const handleDeleteLogs = async () => {
+    if (!user || !deleteFrom || !deleteTo) return;
+    setDeleteLogsBusy(true);
+    await supabase
+      .from('daily_log')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('user_id', user.id)
+      .gte('date', deleteFrom)
+      .lte('date', deleteTo);
+    setDeleteLogsBusy(false);
+    setDeleteLogsOpen(false);
+    setDeleteFrom('');
+    setDeleteTo('');
+    toast.success('Logs deleted.');
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!user) return;
+    setDeleteAccountBusy(true);
+    await supabase
+      .from('user_profile')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', user.id);
+    setDeleteAccountBusy(false);
+    setDeleteAccountStep(0);
+    setDeleteAccountEmail('');
+    await signOut();
+    navigate('/signin', { replace: true });
+  };
+
+  const pwValid = (
+    newPw.length >= 8 &&
+    /[A-Z]/.test(newPw) &&
+    /[0-9]/.test(newPw) &&
+    /[^A-Za-z0-9]/.test(newPw)
+  );
+  const canSavePw = pwValid && confirmNewPw === newPw;
+
+  const handleChangePassword = async () => {
+    if (!canSavePw) return;
+    setPwSaving(true);
+    setPwError(null);
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPw });
+      if (error) {
+        setPwError('Something went wrong. Please try again.');
+      } else {
+        setChangePwOpen(false);
+        setNewPw('');
+        setConfirmNewPw('');
+        toast.success('Password updated.');
+      }
+    } catch {
+      setPwError('Something went wrong. Please try again.');
+    } finally {
+      setPwSaving(false);
+    }
+  };
+
   const initials = `${firstName.charAt(0).toUpperCase()}${lastInitial.toUpperCase()}`;
+
+  const memberSince = authProfile?.created_at
+    ? format(new Date(authProfile.created_at), 'dd/MM/yyyy')
+    : '—';
 
   return (
     <div className="space-y-4 pb-8">
@@ -248,7 +509,11 @@ const Settings = () => {
       <Overlay open={openSection === 'profile'} onClose={close} title="Profile">
         {/* Avatar */}
         <div className="flex flex-col items-center gap-2 py-4">
-          {photoUrl ? (
+          {photoUploading ? (
+            <div className="h-20 w-20 rounded-full bg-muted flex items-center justify-center">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : photoUrl ? (
             <img
               src={photoUrl}
               alt="Profile photo"
@@ -256,20 +521,24 @@ const Settings = () => {
             />
           ) : (
             <div className="h-20 w-20 rounded-full bg-primary/20 flex items-center justify-center text-2xl font-bold text-primary">
-              {initials}
+              {initials || '?'}
             </div>
           )}
           <div className="flex gap-3 mt-1">
             <button
+              type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="text-xs text-primary underline underline-offset-2"
+              disabled={photoUploading}
+              className="text-xs text-primary underline underline-offset-2 disabled:opacity-50"
             >
-              Change photo
+              {photoUrl ? 'Change photo' : 'Add photo'}
             </button>
             {photoUrl && (
               <button
+                type="button"
                 onClick={handleRemovePhoto}
-                className="text-xs text-destructive underline underline-offset-2"
+                disabled={photoUploading}
+                className="text-xs text-destructive underline underline-offset-2 disabled:opacity-50"
               >
                 Remove photo
               </button>
@@ -291,8 +560,9 @@ const Settings = () => {
             <input
               value={firstName}
               onChange={e => setFirstName(e.target.value)}
-              placeholder="Kui"
-              className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              placeholder="First name"
+              disabled={profileSaving}
+              className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
             />
           </div>
           <div>
@@ -302,7 +572,8 @@ const Settings = () => {
               onChange={e => setLastInitial(e.target.value.charAt(0))}
               maxLength={1}
               placeholder="N"
-              className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              disabled={profileSaving}
+              className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
             />
           </div>
           <p className="text-xs text-muted-foreground -mt-1">
@@ -314,7 +585,8 @@ const Settings = () => {
               <select
                 value={dobMonth}
                 onChange={e => setDobMonth(e.target.value)}
-                className="flex-1 rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                disabled={profileSaving}
+                className="flex-1 rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
               >
                 {[
                   ['01', 'January'], ['02', 'February'], ['03', 'March'],
@@ -327,18 +599,20 @@ const Settings = () => {
                 type="number"
                 value={dobYear}
                 onChange={e => setDobYear(e.target.value)}
-                placeholder="1983"
+                placeholder="YYYY"
                 min="1900"
                 max={new Date().getFullYear()}
-                className="w-24 rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                disabled={profileSaving}
+                className="w-24 rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
               />
             </div>
           </div>
           <Button
             className="w-full mt-2"
-            onClick={() => { toast.success('Profile saved.'); close(); }}
+            disabled={profileSaving}
+            onClick={handleSaveProfile}
           >
-            Save
+            {profileSaving ? <><Loader2 className="animate-spin" /> Saving...</> : 'Save'}
           </Button>
         </div>
       </Overlay>
@@ -347,127 +621,203 @@ const Settings = () => {
       <Overlay open={openSection === 'health'} onClose={close} title="Health Context">
         <p className="text-sm text-muted-foreground mb-6">Update anytime — bodies change.</p>
         <div className="space-y-6">
+
+          {/* Fibroids */}
           <div>
-            <p className="text-sm font-medium mb-2">Fibroids?</p>
+            <p className="text-sm font-medium mb-2">Do you have fibroids?</p>
             <OptionPicker
               value={fibroids}
-              onChange={v => setFibroids(v as typeof fibroids)}
+              onChange={setFibroids}
               options={[
-                { value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' },
-                { value: 'suspected', label: 'Suspected' }, { value: 'removed', label: 'Removed' },
+                { value: 'no',        label: 'No' },
+                { value: 'yes',       label: 'Yes' },
+                { value: 'suspected', label: 'Suspected' },
+                { value: 'removed',   label: 'Had them, removed' },
               ]}
             />
           </div>
+
+          {/* Hormonal treatment */}
           <div>
-            <p className="text-sm font-medium mb-2">Perimenopause?</p>
+            <p className="text-sm font-medium mb-2">On any hormonal treatment or contraception?</p>
             <OptionPicker
-              value={perimenopause}
-              onChange={v => setPerimenopause(v as typeof perimenopause)}
+              value={hormonalOn}
+              onChange={setHormonalOn}
               options={[
-                { value: 'yes', label: 'Yes' }, { value: 'suspected', label: 'I think so' },
-                { value: 'no', label: 'No' }, { value: 'unsure', label: 'Unsure' },
+                { value: 'no',  label: 'No' },
+                { value: 'yes', label: 'Yes' },
               ]}
             />
+            {hormonalOn === 'yes' && (
+              <input
+                value={hormonalDetail}
+                onChange={e => setHormonalDetail(e.target.value)}
+                placeholder="e.g. pill, IUD, HRT"
+                className="mt-2 w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            )}
           </div>
+
+          {/* Diagnosed conditions */}
           <div>
-            <p className="text-sm font-medium mb-2">Is your cycle regular?</p>
-            <OptionPicker
-              value={cycle}
-              onChange={v => setCycle(v as typeof cycle)}
-              options={[
-                { value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' },
-                { value: 'irregular', label: 'Irregular' },
-              ]}
-            />
-          </div>
-          <div>
-            <p className="text-sm font-medium mb-2">Any diagnosed conditions?</p>
+            <p className="text-sm font-medium mb-1">Any diagnosed conditions?</p>
+            <p className="text-xs text-muted-foreground mb-2">Tap any that apply</p>
             <MultiSelect
               selected={conditions}
               onChange={setConditions}
               options={[
                 { value: 'endometriosis', label: 'Endometriosis' },
-                { value: 'pcos', label: 'PCOS' },
-                { value: 'thyroid', label: 'Thyroid' },
-                { value: 'autoimmune', label: 'Autoimmune' },
-                { value: 'other', label: 'Other' },
+                { value: 'pcos',          label: 'PCOS' },
+                { value: 'thyroid',       label: 'Thyroid condition' },
+                { value: 'autoimmune',    label: 'Autoimmune' },
+                { value: 'other',         label: 'Other' },
               ]}
             />
+            {conditions.includes('other') && (
+              <input
+                value={conditionsOther}
+                onChange={e => setConditionsOther(e.target.value)}
+                placeholder="Please specify"
+                className="mt-2 w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            )}
           </div>
+
+          {/* Perimenopause */}
           <div>
-            <p className="text-sm font-medium mb-2">Hormonal treatment?</p>
+            <p className="text-sm font-medium mb-2">In perimenopause, or suspect you are?</p>
             <OptionPicker
-              value={hormonal}
-              onChange={setHormonal}
+              value={perimenopause}
+              onChange={setPerimenopause}
               options={[
-                { value: 'none', label: 'None' }, { value: 'hrt', label: 'HRT' },
-                { value: 'pill', label: 'Pill' }, { value: 'coil', label: 'Coil' },
-                { value: 'other', label: 'Other' },
+                { value: 'yes',       label: 'Yes' },
+                { value: 'suspected', label: 'Suspected' },
+                { value: 'no',        label: 'No' },
+                { value: 'unsure',    label: 'Unsure' },
               ]}
             />
           </div>
+
+          {/* Cycle */}
           <div>
-            <p className="text-sm font-medium mb-2">Joint issues?</p>
+            <p className="text-sm font-medium mb-2">Do you have a regular menstrual cycle?</p>
             <OptionPicker
-              value={joints ? 'yes' : 'no'}
-              onChange={v => setJoints(v === 'yes')}
-              options={[{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }]}
+              value={regularCycle}
+              onChange={setRegularCycle}
+              options={[
+                { value: 'yes',       label: 'Yes' },
+                { value: 'irregular', label: 'Irregular' },
+                { value: 'no',        label: 'No' },
+              ]}
             />
           </div>
+
+          {/* Joints */}
+          <div>
+            <p className="text-sm font-medium mb-2">Any joint or musculoskeletal conditions?</p>
+            <OptionPicker
+              value={joints}
+              onChange={setJoints}
+              options={[
+                { value: 'no',  label: 'No' },
+                { value: 'yes', label: 'Yes' },
+              ]}
+            />
+            {joints === 'yes' && (
+              <input
+                value={jointsDetail}
+                onChange={e => setJointsDetail(e.target.value)}
+                placeholder="Please describe"
+                className="mt-2 w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            )}
+          </div>
+
+          {/* Exercise */}
           <div>
             <p className="text-sm font-medium mb-2">Do you exercise regularly?</p>
             <OptionPicker
-              value={exerciseReg ? 'yes' : 'no'}
-              onChange={v => setExerciseReg(v === 'yes')}
-              options={[{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'Not really' }]}
-            />
-          </div>
-          {exerciseReg && (
-            <div>
-              <p className="text-sm font-medium mb-2">What kind?</p>
-              <MultiSelect
-                selected={exerciseTypes}
-                onChange={setExerciseTypes}
-                options={[
-                  { value: 'strength', label: 'Strength' },
-                  { value: 'cardio', label: 'Cardio' },
-                  { value: 'yoga_pilates', label: 'Yoga / Pilates' },
-                  { value: 'walking', label: 'Walking' },
-                  { value: 'running', label: 'Running' },
-                  { value: 'sport', label: 'Sport' },
-                  { value: 'other', label: 'Other' },
-                ]}
-              />
-            </div>
-          )}
-          <div>
-            <p className="text-sm font-medium mb-2">Stress baseline?</p>
-            <OptionPicker
-              value={stress}
-              onChange={v => setStress(v as typeof stress)}
+              value={exerciseReg}
+              onChange={setExerciseReg}
               options={[
-                { value: 'low', label: 'Low' },
-                { value: 'moderate', label: 'Moderate' },
-                { value: 'high', label: 'High' },
+                { value: 'yes', label: 'Yes' },
+                { value: 'no',  label: 'No' },
+              ]}
+            />
+            {exerciseReg === 'yes' && (
+              <div className="mt-3 space-y-2">
+                <MultiSelect
+                  selected={exerciseTypes}
+                  onChange={setExerciseTypes}
+                  options={[
+                    { value: 'strength',     label: 'Strength' },
+                    { value: 'cardio',       label: 'Cardio' },
+                    { value: 'yoga_pilates', label: 'Yoga / Pilates' },
+                    { value: 'walking',      label: 'Walking' },
+                    { value: 'running',      label: 'Running' },
+                    { value: 'sport',        label: 'Sport' },
+                    { value: 'other',        label: 'Other' },
+                  ]}
+                />
+                {exerciseTypes.includes('other') && (
+                  <input
+                    value={exerciseOther}
+                    onChange={e => setExerciseOther(e.target.value)}
+                    placeholder="Please specify"
+                    className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Food tracking */}
+          <div>
+            <p className="text-sm font-medium mb-2">Do you track your food or have dietary considerations?</p>
+            <OptionPicker
+              value={tracksFood}
+              onChange={setTracksFood}
+              options={[
+                { value: 'yes', label: 'Yes' },
+                { value: 'no',  label: 'No' },
               ]}
             />
           </div>
+
+          {/* Stress */}
+          <div>
+            <p className="text-sm font-medium mb-2">How would you describe your stress baseline?</p>
+            <OptionPicker
+              value={stress}
+              onChange={setStress}
+              options={[
+                { value: 'low',      label: 'Low' },
+                { value: 'moderate', label: 'Moderate' },
+                { value: 'high',     label: 'High' },
+              ]}
+            />
+          </div>
+
+          {/* Goals */}
           <div>
             <p className="text-sm font-medium mb-2">What do you want to understand?</p>
             <MultiSelect
               selected={goals}
               onChange={setGoals}
               options={[
-                { value: 'energy', label: '⚡ Energy patterns' },
-                { value: 'cycle', label: '🔄 Cycle changes' },
-                { value: 'fibroids', label: '🎯 Fibroid symptoms' },
-                { value: 'mental_emotional', label: '🧠 Mental & emotional' },
-                { value: 'exercise', label: '💪 Exercise response' },
-                { value: 'general', label: '📊 General tracking' },
+                { value: 'energy',           label: 'My energy patterns' },
+                { value: 'cycle',            label: 'My cycle and hormonal shifts' },
+                { value: 'fibroids',         label: 'My fibroid symptoms' },
+                { value: 'mental_emotional', label: 'My mental and emotional state' },
+                { value: 'exercise',         label: "My body's response to exercise" },
+                { value: 'general',          label: "General pattern tracking" },
               ]}
             />
           </div>
-          <Button className="w-full" onClick={handleSaveHealth}>Save</Button>
+
+          <Button className="w-full" disabled={healthSaving} onClick={handleSaveHealth}>
+            {healthSaving ? <><Loader2 className="animate-spin" /> Saving...</> : 'Save'}
+          </Button>
         </div>
       </Overlay>
 
@@ -475,7 +825,6 @@ const Settings = () => {
       <Overlay open={openSection === 'notifications'} onClose={close} title="Notifications">
         <div className="space-y-6 pt-2">
 
-          {/* A — Daily Log Reminders */}
           <div>
             <p className="text-sm font-semibold">Daily log reminders</p>
             <p className="text-xs text-muted-foreground mt-0.5 mb-4">We'll nudge you to log.</p>
@@ -514,7 +863,6 @@ const Settings = () => {
             </p>
           </div>
 
-          {/* B — Weekly Insight */}
           <div className="border-t pt-5">
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -527,7 +875,6 @@ const Settings = () => {
             </div>
           </div>
 
-          {/* C — Appointment Reminders */}
           <div className="border-t pt-5">
             <div className="flex items-start justify-between gap-4 mb-3">
               <div>
@@ -540,29 +887,27 @@ const Settings = () => {
             </div>
             {appointmentOn && (
               <div className="flex gap-2 flex-wrap">
-                {['1 day', '3 days', '1 week', '2 weeks'].map(opt => (
+                {LEAD_OPTIONS.map(opt => (
                   <button
-                    key={opt}
-                    onClick={() => setAppointmentLead(opt)}
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setAppointmentLead(opt.value)}
                     className={cn(
                       'rounded-full px-3 py-1.5 text-xs border transition-colors',
-                      appointmentLead === opt
+                      appointmentLead === opt.value
                         ? 'bg-primary text-primary-foreground border-primary'
                         : 'bg-card border-border hover:bg-muted',
                     )}
                   >
-                    {opt}
+                    {opt.label}
                   </button>
                 ))}
               </div>
             )}
           </div>
 
-          <Button
-            className="w-full"
-            onClick={() => { toast.success('Notification preferences saved.'); close(); }}
-          >
-            Save
+          <Button className="w-full" disabled={notifSaving} onClick={handleSaveNotifications}>
+            {notifSaving ? <><Loader2 className="animate-spin" /> Saving...</> : 'Save'}
           </Button>
         </div>
       </Overlay>
@@ -572,7 +917,6 @@ const Settings = () => {
         <p className="text-sm text-muted-foreground mb-5">Bring in your existing cycle data.</p>
         <div className="space-y-4">
 
-          {/* A — Apple Health */}
           <div className="rounded-lg border bg-card p-4 space-y-3">
             <div className="flex items-center gap-2">
               <Upload className="h-4 w-4 text-muted-foreground" />
@@ -586,7 +930,6 @@ const Settings = () => {
             </Button>
           </div>
 
-          {/* B — CSV */}
           <div className="rounded-lg border bg-card p-4 space-y-3">
             <div className="flex items-center gap-2">
               <FileText className="h-4 w-4 text-muted-foreground" />
@@ -605,7 +948,6 @@ const Settings = () => {
             </div>
           </div>
 
-          {/* C — Manual */}
           <div className="rounded-lg border bg-card p-4 space-y-3">
             <div className="flex items-center gap-2">
               <Pencil className="h-4 w-4 text-muted-foreground" />
@@ -633,9 +975,11 @@ const Settings = () => {
             {(['light', 'dark', 'system'] as const).map(opt => (
               <button
                 key={opt}
-                onClick={() => setTheme(opt)}
+                type="button"
+                disabled={themeSaving}
+                onClick={() => handleThemeChange(opt)}
                 className={cn(
-                  'flex-1 rounded-full py-2.5 text-sm border capitalize transition-colors',
+                  'flex-1 rounded-full py-2.5 text-sm border capitalize transition-colors disabled:opacity-50',
                   theme === opt
                     ? 'bg-primary text-primary-foreground border-primary'
                     : 'bg-card border-border hover:bg-muted',
@@ -646,7 +990,7 @@ const Settings = () => {
             ))}
           </div>
           <p className="text-xs text-muted-foreground">
-            System matches your device setting and changes automatically.
+            System matches your device setting and changes automatically. Changes save instantly.
           </p>
         </div>
       </Overlay>
@@ -655,39 +999,27 @@ const Settings = () => {
       <Overlay open={openSection === 'privacy'} onClose={close} title="Privacy & Data">
         <div className="space-y-4 pt-2">
 
-          {/* A — Export */}
           <div className="rounded-lg border bg-card p-4 space-y-3">
             <p className="text-sm font-medium">Export all my data</p>
             <p className="text-xs text-muted-foreground">
               Download everything you've logged as a JSON or CSV file.
             </p>
             <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="flex-1"
-                onClick={() => toast('Coming soon.')}
-              >
+              <Button variant="outline" size="sm" className="flex-1" onClick={() => toast('Coming soon.')}>
                 <Download className="h-3 w-3 mr-1.5" />
                 JSON
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="flex-1"
-                onClick={() => toast('Coming soon.')}
-              >
+              <Button variant="outline" size="sm" className="flex-1" onClick={() => toast('Coming soon.')}>
                 <Download className="h-3 w-3 mr-1.5" />
                 CSV
               </Button>
             </div>
           </div>
 
-          {/* B — Delete logs by date range */}
           <div className="rounded-lg border bg-card p-4 space-y-3">
             <p className="text-sm font-medium">Delete logs by date range</p>
             <p className="text-xs text-muted-foreground">
-              Permanently remove logs from a specific period.
+              Remove logs from a specific period.
             </p>
             <div className="flex gap-3">
               <div className="flex-1">
@@ -725,7 +1057,6 @@ const Settings = () => {
             </Button>
           </div>
 
-          {/* C — Delete account */}
           <div className="rounded-lg border bg-card p-4 space-y-3">
             <p className="text-sm font-medium">Delete my account</p>
             <p className="text-xs text-muted-foreground">
@@ -748,24 +1079,63 @@ const Settings = () => {
         <div className="space-y-0 pt-2 divide-y divide-border">
           <div className="py-4">
             <p className="text-xs text-muted-foreground mb-1">Email</p>
-            <p className="text-sm">kui.njoroge@email.com</p>
+            <p className="text-sm">{user?.email ?? '—'}</p>
           </div>
           <div className="py-4">
             <Button
               variant="outline"
               size="sm"
               className="w-full"
-              onClick={() => toast('Coming soon.')}
+              onClick={() => setChangePwOpen(true)}
             >
               Change password
             </Button>
           </div>
           <div className="py-4">
             <p className="text-xs text-muted-foreground mb-1">Member since</p>
-            <p className="text-sm">12/01/2026</p>
+            <p className="text-sm">{memberSince}</p>
           </div>
         </div>
       </Overlay>
+
+      {/* Change password sheet */}
+      <Sheet open={changePwOpen} onOpenChange={o => { if (!o) { setChangePwOpen(false); setNewPw(''); setConfirmNewPw(''); setPwError(null); } }}>
+        <SheetContent side="bottom" className="rounded-t-2xl px-6 pb-8">
+          <SheetHeader className="mb-5">
+            <SheetTitle>Change password</SheetTitle>
+          </SheetHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium">New password</label>
+              <input
+                type="password"
+                value={newPw}
+                onChange={e => setNewPw(e.target.value)}
+                disabled={pwSaving}
+                className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+              />
+              {newPw.length > 0 && <PasswordReqs password={newPw} />}
+            </div>
+            <div>
+              <label className="text-sm font-medium">Confirm new password</label>
+              <input
+                type="password"
+                value={confirmNewPw}
+                onChange={e => setConfirmNewPw(e.target.value)}
+                disabled={pwSaving}
+                className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+              />
+              {confirmNewPw.length > 0 && confirmNewPw !== newPw && (
+                <p className="text-xs text-destructive mt-1">Passwords don't match.</p>
+              )}
+            </div>
+            {pwError && <p className="text-sm text-destructive/80">{pwError}</p>}
+            <Button className="w-full" disabled={!canSavePw || pwSaving} onClick={handleChangePassword}>
+              {pwSaving ? <><Loader2 className="animate-spin" /> Saving...</> : 'Save new password'}
+            </Button>
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {/* 8 — ABOUT */}
       <Overlay open={openSection === 'about'} onClose={close} title="About">
@@ -817,7 +1187,7 @@ const Settings = () => {
       </AlertDialog>
 
       {/* Delete logs */}
-      <AlertDialog open={deleteLogsOpen} onOpenChange={setDeleteLogsOpen}>
+      <AlertDialog open={deleteLogsOpen} onOpenChange={o => { if (!o) setDeleteLogsOpen(false); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete logs?</AlertDialogTitle>
@@ -826,12 +1196,13 @@ const Settings = () => {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleteLogsBusy}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => { setDeleteLogsOpen(false); toast('Coming soon.'); }}
+              disabled={deleteLogsBusy}
+              onClick={handleDeleteLogs}
             >
-              Delete
+              {deleteLogsBusy ? 'Deleting…' : 'Delete'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -877,25 +1248,24 @@ const Settings = () => {
             <input
               value={deleteAccountEmail}
               onChange={e => setDeleteAccountEmail(e.target.value)}
-              placeholder="kui.njoroge@email.com"
-              className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              placeholder={user?.email ?? 'your@email.com'}
+              disabled={deleteAccountBusy}
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
             />
           </div>
           <AlertDialogFooter>
             <AlertDialogCancel
+              disabled={deleteAccountBusy}
               onClick={() => { setDeleteAccountStep(0); setDeleteAccountEmail(''); }}
             >
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => {
-                setDeleteAccountStep(0);
-                setDeleteAccountEmail('');
-                toast('Coming soon.');
-              }}
+              disabled={deleteAccountEmail !== user?.email || deleteAccountBusy}
+              onClick={handleDeleteAccount}
             >
-              Delete account
+              {deleteAccountBusy ? 'Deleting…' : 'Delete account'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

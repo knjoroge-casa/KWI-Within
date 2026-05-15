@@ -6,6 +6,19 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppProvider } from "@/contexts/AppContext";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+
+const applyTheme = (t: string) => {
+  const root = document.documentElement;
+  if (t === 'dark') root.classList.add('dark');
+  else if (t === 'light') root.classList.remove('dark');
+  else root.classList.toggle('dark', window.matchMedia('(prefers-color-scheme: dark)').matches);
+};
+
+const ThemeSync = () => {
+  const { profile } = useAuth();
+  useEffect(() => { applyTheme(profile?.theme ?? 'system'); }, [profile?.theme]);
+  return null;
+};
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { AskKWIButton } from "@/components/insights/AskKWIButton";
@@ -79,6 +92,7 @@ const App = () => (
         <Sonner />
         <BrowserRouter>
           <AppProvider>
+            <ThemeSync />
             <ScrollToTop />
             <AppRoutes />
           </AppProvider>
