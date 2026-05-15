@@ -316,12 +316,14 @@ const Settings = () => {
     setPhotoError('');
     setPhotoUploading(true);
     const ext = file.name.split('.').pop() ?? 'jpg';
-    const path = `${user.id}/avatar.${ext}`;
+    // Use a unique path each time so this is always a fresh INSERT (no upsert/UPDATE policy needed)
+    const path = `${user.id}/avatar-${Date.now()}.${ext}`;
     const { error: uploadError } = await supabase.storage
       .from('avatars')
-      .upload(path, file, { upsert: true, contentType: file.type });
+      .upload(path, file, { contentType: file.type });
     if (uploadError) {
-      setPhotoError('Upload failed. Please try again.');
+      console.error('[Avatar upload error]', uploadError);
+      setPhotoError(`Upload failed: ${uploadError.message}`);
       setPhotoUploading(false);
       return;
     }
