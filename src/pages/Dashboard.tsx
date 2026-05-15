@@ -1,6 +1,7 @@
 import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '@/contexts/AppContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { HeatmapCalendar } from '@/components/dashboard/HeatmapCalendar';
 import { SymptomBarChart } from '@/components/dashboard/SymptomBarChart';
 import { RotatingCard } from '@/components/dashboard/RotatingCard';
@@ -19,7 +20,13 @@ const getGreeting = () => {
 
 const Dashboard = () => {
   const { profile, logs, insights, dismissInsight } = useApp();
+  const { profile: authProfile } = useAuth();
   const navigate = useNavigate();
+
+  const firstName = authProfile?.first_name ?? profile.name.split(' ')[0] ?? '';
+  const lastInitial = authProfile?.last_initial ?? profile.name.split(' ')[1]?.charAt(0) ?? '';
+  const initials = `${firstName.charAt(0)}${lastInitial}`.toUpperCase();
+  const avatarUrl = authProfile?.avatar_url;
 
   const todayStr = format(new Date(), 'yyyy-MM-dd');
   const todayLog = logs.find(l => l.date === todayStr);
@@ -30,18 +37,31 @@ const Dashboard = () => {
       <WeeklyInsightModal insights={insights} />
 
       {/* Greeting */}
-      <div>
-        <h2 className="text-xl font-bold">
-          {getGreeting()}, {profile.name}
-        </h2>
-        <p className="text-sm text-muted-foreground">
-          {format(new Date(), 'EEEE, MMMM d')}
-        </p>
-        {totalDays > 0 && (
-          <p className="text-xs text-muted-foreground mt-1">
-            {totalDays} days of data. Your dashboard is getting interesting.
-          </p>
+      <div className="flex items-center gap-3">
+        {avatarUrl ? (
+          <img
+            src={avatarUrl}
+            alt={initials}
+            className="h-10 w-10 sm:h-12 sm:w-12 rounded-full object-cover shrink-0"
+          />
+        ) : (
+          <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-full bg-primary/20 flex items-center justify-center text-xs sm:text-sm font-bold text-primary shrink-0">
+            {initials}
+          </div>
         )}
+        <div>
+          <h2 className="text-xl font-bold">
+            {getGreeting()}, {profile.name}
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            {format(new Date(), 'EEEE, MMMM d')}
+          </p>
+          {totalDays > 0 && (
+            <p className="text-xs text-muted-foreground mt-1">
+              {totalDays} days of data. Your dashboard is getting interesting.
+            </p>
+          )}
+        </div>
       </div>
 
       {/* Today's log status */}
