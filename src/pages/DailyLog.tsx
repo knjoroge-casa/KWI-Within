@@ -1,10 +1,11 @@
 import { useState, ReactNode } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useApp } from '@/contexts/AppContext';
-import { format } from 'date-fns';
+import { format, addDays, subDays, isToday, isYesterday, parseISO } from 'date-fns';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -133,6 +134,29 @@ const energyOpts: Opt<EnergyVal>[] = [
 
 const DailyLog = () => {
   const { profile } = useApp();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const dateParam = searchParams.get('date');
+  const displayDate = dateParam ? parseISO(dateParam) : new Date();
+  const viewingToday = isToday(displayDate);
+  const viewingYesterday = isYesterday(displayDate);
+
+  const dateLabel = viewingToday
+    ? 'Today'
+    : viewingYesterday
+    ? 'Yesterday'
+    : format(displayDate, 'd MMMM yyyy');
+
+  const goToPrevDay = () => {
+    const prev = subDays(displayDate, 1);
+    setSearchParams({ date: format(prev, 'yyyy-MM-dd') }, { replace: true });
+  };
+
+  const goToNextDay = () => {
+    if (!viewingToday) {
+      const next = addDays(displayDate, 1);
+      setSearchParams({ date: format(next, 'yyyy-MM-dd') }, { replace: true });
+    }
+  };
 
   /* Energy & Function */
   const [morningEnergy, setMorningEnergy] = useState<EnergyVal | null>(null);
@@ -256,8 +280,34 @@ const DailyLog = () => {
   return (
     <div className="space-y-3 pb-4">
       <div>
-        <h2 className="text-xl font-bold">How are you actually doing today?</h2>
-        <p className="text-xs text-muted-foreground">{format(new Date(), 'EEEE, MMMM d')}</p>
+        <div className="flex items-center justify-between">
+          <button
+            onClick={goToPrevDay}
+            className="p-1 rounded hover:bg-muted transition-colors"
+            aria-label="Previous day"
+          >
+            <ChevronLeft className="h-4 w-4 text-muted-foreground" />
+          </button>
+          <span className="text-sm font-semibold">{dateLabel}</span>
+          <button
+            onClick={goToNextDay}
+            disabled={viewingToday}
+            className={cn(
+              'p-1 rounded transition-colors',
+              viewingToday ? 'opacity-30 cursor-not-allowed' : 'hover:bg-muted',
+            )}
+            aria-label="Next day"
+          >
+            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          </button>
+        </div>
+        {!viewingToday && (
+          <p className="text-xs text-muted-foreground text-center mt-1">
+            Editing entry from {format(displayDate, 'd MMMM yyyy')}
+          </p>
+        )}
+        <h2 className="text-xl font-bold mt-2">How are you actually doing today?</h2>
+        <p className="text-xs text-muted-foreground">{format(displayDate, 'EEEE, MMMM d')}</p>
       </div>
 
       <Progress value={progress} className="h-2" />
