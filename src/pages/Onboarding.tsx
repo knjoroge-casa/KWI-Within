@@ -155,7 +155,7 @@ const inputDisabledCls =
 // ── Main component ─────────────────────────────────────────────
 
 const Onboarding = () => {
-  const { onboarded, setOnboarded } = useApp();
+  const { setOnboarded } = useApp();
   const { signUp, isAuthenticated, hasCompletedOnboarding, loading: authLoading, user, refreshProfile } = useAuth();
   const navigate = useNavigate();
 
@@ -242,8 +242,6 @@ const Onboarding = () => {
     }
   }, [isAuthenticated, authLoading]);
 
-  // ── Redirect if already onboarded (localStorage guard) ──
-  if (onboarded) return <Navigate to="/" replace />;
 
   // ── Sign-up validation ──
   const pwChecks = {
