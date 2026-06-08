@@ -1,9 +1,11 @@
-import { useState } from 'react';
-import { format, parseISO, addDays, subDays } from 'date-fns';
-import { Plus, AlertTriangle, FileText, ChevronDown, Upload, Info } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { format, parseISO } from 'date-fns';
+import { Plus, AlertTriangle, ChevronDown, Upload, Info, Pencil, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/lib/supabase';
 
 /* ================================================================
    TYPES
@@ -43,7 +45,6 @@ interface LabResult {
   date: string;
   lab_name?: string;
   parameters: LabParameter[];
-  has_pdf: boolean;
 }
 
 interface Scan {
@@ -53,13 +54,12 @@ interface Scan {
   facility?: string;
   findings: string;
   plain_language_summary?: string;
-  has_pdf: boolean;
 }
 
 interface Medication {
   id: string;
   name: string;
-  type: 'prescribed' | 'otc';
+  med_type: 'prescribed' | 'otc';
   dose: string;
   frequency: string;
   start_date: string;
@@ -82,282 +82,153 @@ interface Supplement {
   notes?: string;
 }
 
-interface UpcomingAppointment {
+interface Appointment {
   id: string;
   provider: string;
-  specialty: string;
-  date_time: string;
-  discussion: string;
-  prep?: string;
-}
-
-interface PastAppointment {
-  id: string;
-  provider: string;
-  specialty: string;
   date: string;
-  summary: string;
+  specialty?: string;
+  time?: string;
+  what_to_discuss?: string;
+  prep_needed?: string;
+  summary?: string;
   action_items?: string;
   followup_date?: string;
   new_diagnosis?: string;
 }
 
 /* ================================================================
-   HELPERS
+   DB LAYER
    ================================================================ */
 
-const _today = new Date();
-const dAgo = (n: number) => format(subDays(_today, n), 'yyyy-MM-dd');
-const dFrom = (n: number) => format(addDays(_today, n), 'yyyy-MM-dd');
+type DbRecord = {
+  id: string;
+  record_type: string;
+  title: string;
+  date: string;
+  details: Record<string, unknown>;
+  attachment_url: string | null;
+};
 
-const getParamTrend = (labs: LabResult[], testName: string, paramName: string): number[] =>
-  [...labs]
-    .filter(l => l.test_name === testName)
-    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-    .flatMap(l => l.parameters.filter(p => p.name === paramName).map(p => p.value));
+const dbToCondition = (r: DbRecord): HealthCondition => ({
+  id: r.id,
+  condition_name: r.title,
+  date_diagnosed: r.date,
+  status: (r.details.status as HealthCondition['status']) || 'active',
+  managing_doctor: r.details.managing_doctor as string | undefined,
+  notes: r.details.notes as string | undefined,
+});
+
+const dbToIllness = (r: DbRecord): Illness => ({
+  id: r.id,
+  name: r.title,
+  start_date: r.date,
+  end_date: r.details.end_date as string | undefined,
+  ongoing: Boolean(r.details.ongoing),
+  severity: (r.details.severity as Illness['severity']) || 'mild',
+  treatment: r.details.treatment as string | undefined,
+  notes: r.details.notes as string | undefined,
+});
+
+const dbToLab = (r: DbRecord): LabResult => ({
+  id: r.id,
+  test_name: r.title,
+  date: r.date,
+  lab_name: r.details.lab_name as string | undefined,
+  parameters: (r.details.parameters as LabParameter[]) || [],
+});
+
+const dbToScan = (r: DbRecord): Scan => ({
+  id: r.id,
+  scan_type: r.title,
+  date: r.date,
+  facility: r.details.facility as string | undefined,
+  findings: (r.details.findings as string) || '',
+  plain_language_summary: r.details.plain_summary as string | undefined,
+});
+
+const dbToMedication = (r: DbRecord): Medication => ({
+  id: r.id,
+  name: r.title,
+  med_type: (r.details.med_type as 'prescribed' | 'otc') || 'prescribed',
+  dose: (r.details.dose as string) || '',
+  frequency: (r.details.frequency as string) || '',
+  start_date: r.date,
+  end_date: r.details.end_date as string | undefined,
+  currently_taking: Boolean(r.details.currently_taking),
+  prescriber: r.details.prescriber as string | undefined,
+  reason: r.details.reason as string | undefined,
+  notes: r.details.notes as string | undefined,
+});
+
+const dbToSupplement = (r: DbRecord): Supplement => ({
+  id: r.id,
+  name: r.title,
+  dose: (r.details.dose as string) || '',
+  frequency: (r.details.frequency as string) || '',
+  start_date: r.date,
+  end_date: r.details.end_date as string | undefined,
+  currently_taking: Boolean(r.details.currently_taking),
+  reason: r.details.reason as string | undefined,
+  notes: r.details.notes as string | undefined,
+});
+
+const dbToAppointment = (r: DbRecord): Appointment => ({
+  id: r.id,
+  provider: r.title,
+  date: r.date,
+  specialty: r.details.specialty as string | undefined,
+  time: r.details.time as string | undefined,
+  what_to_discuss: r.details.what_to_discuss as string | undefined,
+  prep_needed: r.details.prep_needed as string | undefined,
+  summary: r.details.summary as string | undefined,
+  action_items: r.details.action_items as string | undefined,
+  followup_date: r.details.followup_date as string | undefined,
+  new_diagnosis: r.details.new_diagnosis as string | undefined,
+});
+
+async function fetchRecords(userId: string, recordType: string | string[]): Promise<DbRecord[]> {
+  const q = supabase
+    .from('medical_records')
+    .select('id, record_type, title, date, details, attachment_url')
+    .eq('user_id', userId)
+    .is('deleted_at', null)
+    .order('date', { ascending: false });
+  const { data } = Array.isArray(recordType)
+    ? await q.in('record_type', recordType)
+    : await q.eq('record_type', recordType);
+  return (data ?? []) as DbRecord[];
+}
+
+async function softDelete(id: string) {
+  await supabase
+    .from('medical_records')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', id);
+}
 
 /* ================================================================
-   PLACEHOLDER DATA
+   SHARED UI
    ================================================================ */
 
-const INIT_CONDITIONS: HealthCondition[] = [
-  {
-    id: 'cond-1',
-    condition_name: 'Uterine Fibroids',
-    date_diagnosed: '2022-03-14',
-    status: 'active',
-    managing_doctor: 'Dr Chen',
-    notes: 'Intramural fibroid 4.2cm posterior wall, subserosal fibroid 2.1cm fundal. Currently monitoring. Repeat scan every 6–12 months.',
-  },
-  {
-    id: 'cond-2',
-    condition_name: 'Perimenopause',
-    date_diagnosed: '2023-09-01',
-    status: 'active',
-    managing_doctor: 'Dr Chen',
-    notes: 'Suspected perimenopause based on cycle irregularity, FSH levels, and symptom pattern. Not yet formally confirmed.',
-  },
-  {
-    id: 'cond-3',
-    condition_name: 'Iron Deficiency Anaemia',
-    date_diagnosed: '2024-02-01',
-    status: 'managed',
-    managing_doctor: 'Dr Osei',
-    notes: 'Secondary to heavy menstrual bleeding from fibroids. Currently supplementing with iron bisglycinate.',
-  },
-];
+const Skeleton = ({ className }: { className?: string }) => (
+  <div className={`animate-pulse rounded-lg bg-muted ${className ?? ''}`} />
+);
 
-const INIT_ILLNESSES: Illness[] = [
-  {
-    id: 'ill-1',
-    name: 'COVID-19',
-    start_date: '2024-03-10',
-    end_date: '2024-03-24',
-    ongoing: false,
-    severity: 'moderate',
-    treatment: 'Rest, paracetamol, Paxlovid. Off work for 2 weeks.',
-    notes: 'Fatigue lingered for several weeks after the acute illness cleared.',
-  },
-  {
-    id: 'ill-2',
-    name: 'Flu',
-    start_date: '2023-01-08',
-    end_date: '2023-01-15',
-    ongoing: false,
-    severity: 'mild',
-    treatment: 'Rest and fluids. No medication.',
-  },
-];
+function useToast() {
+  const [toast, setToast] = useState<string | null>(null);
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 2500);
+    return () => clearTimeout(t);
+  }, [toast]);
+  return { toast, showToast: setToast };
+}
 
-const INIT_LABS: LabResult[] = [
-  {
-    id: 'lab-1',
-    test_name: 'Full Blood Count',
-    date: dAgo(35),
-    lab_name: 'CityLab',
-    has_pdf: true,
-    parameters: [
-      { name: 'Haemoglobin', value: 11.2, unit: 'g/dL', ref_low: 12.0, ref_high: 15.5 },
-      { name: 'WBC', value: 6.8, unit: '×10⁹/L', ref_low: 4.0, ref_high: 11.0 },
-      { name: 'Platelets', value: 245, unit: '×10⁹/L', ref_low: 150, ref_high: 400 },
-      { name: 'MCV', value: 78, unit: 'fL', ref_low: 80, ref_high: 100 },
-    ],
-  },
-  {
-    id: 'lab-1b',
-    test_name: 'Full Blood Count',
-    date: dAgo(90),
-    lab_name: 'CityLab',
-    has_pdf: true,
-    parameters: [
-      { name: 'Haemoglobin', value: 11.8, unit: 'g/dL', ref_low: 12.0, ref_high: 15.5 },
-      { name: 'WBC', value: 7.2, unit: '×10⁹/L', ref_low: 4.0, ref_high: 11.0 },
-      { name: 'Platelets', value: 231, unit: '×10⁹/L', ref_low: 150, ref_high: 400 },
-      { name: 'MCV', value: 76, unit: 'fL', ref_low: 80, ref_high: 100 },
-    ],
-  },
-  {
-    id: 'lab-2',
-    test_name: 'Iron Studies',
-    date: dAgo(35),
-    lab_name: 'CityLab',
-    has_pdf: true,
-    parameters: [
-      { name: 'Ferritin', value: 15, unit: 'ng/mL', ref_low: 20, ref_high: 200 },
-      { name: 'Serum Iron', value: 8.1, unit: 'µmol/L', ref_low: 9.0, ref_high: 30.4 },
-      { name: 'TIBC', value: 82, unit: 'µmol/L', ref_low: 45, ref_high: 72 },
-    ],
-  },
-  {
-    id: 'lab-2b',
-    test_name: 'Iron Studies',
-    date: dAgo(90),
-    lab_name: 'CityLab',
-    has_pdf: false,
-    parameters: [
-      { name: 'Ferritin', value: 18, unit: 'ng/mL', ref_low: 20, ref_high: 200 },
-      { name: 'Serum Iron', value: 9.5, unit: 'µmol/L', ref_low: 9.0, ref_high: 30.4 },
-      { name: 'TIBC', value: 79, unit: 'µmol/L', ref_low: 45, ref_high: 72 },
-    ],
-  },
-  {
-    id: 'lab-3',
-    test_name: 'Thyroid Panel',
-    date: dAgo(35),
-    lab_name: 'CityLab',
-    has_pdf: false,
-    parameters: [
-      { name: 'TSH', value: 2.1, unit: 'mIU/L', ref_low: 0.4, ref_high: 4.0 },
-      { name: 'Free T4', value: 14.2, unit: 'pmol/L', ref_low: 12.0, ref_high: 22.0 },
-    ],
-  },
-];
-
-const INIT_SCANS: Scan[] = [
-  {
-    id: 'scan-1',
-    scan_type: 'Transvaginal Ultrasound',
-    date: dAgo(60),
-    facility: "Women's Imaging Centre",
-    findings: 'Intramural fibroid 4.2cm posterior wall. Subserosal fibroid 2.1cm fundal. Endometrium 8mm. Normal ovaries bilaterally.',
-    plain_language_summary: 'Two fibroids — one inside the uterine wall (4.2cm) and one on the outer surface (2.1cm). Uterine lining normal. Ovaries fine.',
-    has_pdf: true,
-  },
-  {
-    id: 'scan-2',
-    scan_type: 'Pelvic Ultrasound',
-    date: dAgo(365),
-    facility: 'City Radiology',
-    findings: 'Single intramural fibroid 3.8cm posterior wall. Endometrium 7mm. Normal ovaries.',
-    plain_language_summary: 'One fibroid, slightly smaller than more recent scan. Everything else normal.',
-    has_pdf: false,
-  },
-];
-
-const INIT_MEDICATIONS: Medication[] = [
-  {
-    id: 'med-1',
-    name: 'Tranexamic Acid',
-    type: 'prescribed',
-    dose: '500mg',
-    frequency: 'As needed',
-    start_date: dAgo(120),
-    currently_taking: true,
-    prescriber: 'Dr Chen',
-    reason: 'Heavy menstrual bleeding',
-    notes: 'Take at first sign of heavy flow. Max 4 tablets per day for up to 4 days.',
-  },
-  {
-    id: 'med-2',
-    name: 'Ibuprofen',
-    type: 'otc',
-    dose: '400mg',
-    frequency: 'As needed',
-    start_date: dAgo(365),
-    currently_taking: true,
-    reason: 'Period pain and inflammation',
-  },
-];
-
-const INIT_SUPPLEMENTS: Supplement[] = [
-  {
-    id: 'sup-1',
-    name: 'Iron Bisglycinate',
-    dose: '25mg',
-    frequency: 'Once daily',
-    start_date: dAgo(90),
-    currently_taking: true,
-    reason: 'Low ferritin. Gentler on the stomach than ferrous sulphate.',
-  },
-  {
-    id: 'sup-2',
-    name: 'Vitamin D3',
-    dose: '2000 IU',
-    frequency: 'Once daily',
-    start_date: dAgo(180),
-    currently_taking: true,
-    reason: 'General deficiency. Supports immune function and mood.',
-  },
-  {
-    id: 'sup-3',
-    name: 'Magnesium Glycinate',
-    dose: '300mg',
-    frequency: 'Once daily',
-    start_date: dAgo(60),
-    currently_taking: true,
-    reason: 'Sleep quality, muscle tension, and PMS.',
-  },
-];
-
-const INIT_UPCOMING: UpcomingAppointment[] = [
-  {
-    id: 'apt-up-1',
-    provider: 'Dr Chen',
-    specialty: 'Gynaecology',
-    date_time: dFrom(45) + 'T10:30',
-    discussion: 'Review latest bloods. Discuss UAE vs myomectomy options. Ask about HRT timeline.',
-    prep: 'Bring previous ultrasound report. Print blood results.',
-  },
-  {
-    id: 'apt-up-2',
-    provider: 'Dr Osei',
-    specialty: 'GP',
-    date_time: dFrom(14) + 'T09:00',
-    discussion: 'Repeat blood test referral. Fatigue not improving.',
-  },
-];
-
-const INIT_PAST: PastAppointment[] = [
-  {
-    id: 'apt-past-1',
-    provider: 'Dr Chen',
-    specialty: 'Gynaecology',
-    date: dAgo(10),
-    summary: 'Reviewed ultrasound. Fibroids stable. Discussed management options including UAE and myomectomy. Continue iron supplementation.',
-    action_items: 'Repeat bloods in 3 months. Consider MRI if symptoms worsen.',
-    followup_date: dFrom(80),
-  },
-  {
-    id: 'apt-past-2',
-    provider: 'Dr Osei',
-    specialty: 'GP',
-    date: dAgo(45),
-    summary: 'Annual check-in. Blood pressure normal. Referred for full blood count and iron studies. Discussed perimenopause symptoms — agreed to monitor.',
-    action_items: 'Follow up on blood results. Increase iron-rich foods.',
-  },
-  {
-    id: 'apt-past-3',
-    provider: 'Dr Chen',
-    specialty: 'Gynaecology',
-    date: dAgo(120),
-    summary: 'Initial fibroid consultation. Confirmed intramural and subserosal fibroids from scan. Prescribed tranexamic acid. Plan: watch and wait.',
-    action_items: 'Start tranexamic acid. Schedule repeat ultrasound in 6 months.',
-  },
-];
-
-/* ================================================================
-   SHARED UI PRIMITIVES
-   ================================================================ */
+const ToastBar = ({ message }: { message: string }) => (
+  <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 rounded-full bg-foreground text-background text-xs font-medium px-4 py-2 shadow-lg whitespace-nowrap">
+    {message}
+  </div>
+);
 
 const PillToggle = ({
   options,
@@ -437,13 +308,6 @@ const Sparkline = ({ data }: { data: number[] }) => {
     </svg>
   );
 };
-
-const PDFPlaceholder = () => (
-  <button className="flex items-center gap-2 rounded-lg border bg-muted/50 px-3 py-2 mt-2 w-full hover:bg-muted transition-colors text-left">
-    <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
-    <span className="text-xs text-muted-foreground">PDF report attached — tap to view</span>
-  </button>
-);
 
 const FormField = ({
   label,
@@ -546,17 +410,66 @@ const SectionHeader = ({
   </div>
 );
 
+const CardActions = ({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => void }) => (
+  <div className="flex gap-3 mt-2 pt-2 border-t">
+    <button
+      onClick={onEdit}
+      className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+    >
+      <Pencil className="h-3 w-3" /> Edit
+    </button>
+    <button
+      onClick={onDelete}
+      className="flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive"
+    >
+      <Trash2 className="h-3 w-3" /> Delete
+    </button>
+  </div>
+);
+
+const DeleteConfirm = ({ onCancel, onConfirm }: { onCancel: () => void; onConfirm: () => void }) => (
+  <div className="flex items-center gap-2 mt-2 pt-2 border-t">
+    <p className="text-xs text-muted-foreground flex-1">Delete this record?</p>
+    <button
+      onClick={onCancel}
+      className="text-xs text-muted-foreground hover:text-foreground px-2 py-1"
+    >
+      Cancel
+    </button>
+    <button
+      onClick={onConfirm}
+      className="text-xs text-destructive font-medium hover:text-destructive/80 px-2 py-1"
+    >
+      Delete
+    </button>
+  </div>
+);
+
 /* ================================================================
    HEALTH HISTORY TAB
    ================================================================ */
 
-const HealthHistoryTab = () => {
+const HealthHistoryTab = ({ userId }: { userId: string }) => {
   const [sub, setSub] = useState<'ongoing' | 'illnesses'>('ongoing');
-  const [conditions, setConditions] = useState<HealthCondition[]>(INIT_CONDITIONS);
-  const [illnesses, setIllnesses] = useState<Illness[]>(INIT_ILLNESSES);
+  const [conditions, setConditions] = useState<HealthCondition[]>([]);
+  const [illnesses, setIllnesses] = useState<Illness[]>([]);
+  const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const { toast, showToast } = useToast();
 
-  // Add condition form
+  useEffect(() => {
+    if (!userId) return;
+    setLoading(true);
+    fetchRecords(userId, ['condition', 'illness']).then(rows => {
+      setConditions(rows.filter(r => r.record_type === 'condition').map(dbToCondition));
+      setIllnesses(rows.filter(r => r.record_type === 'illness').map(dbToIllness));
+      setLoading(false);
+    });
+  }, [userId]);
+
+  // ── Condition form ─────────────────────────────────────────────
   const [condOpen, setCondOpen] = useState(false);
   const [condName, setCondName] = useState('');
   const [condDate, setCondDate] = useState('');
@@ -568,21 +481,57 @@ const HealthHistoryTab = () => {
     setCondName(''); setCondDate(''); setCondStatus('active'); setCondDoctor(''); setCondNotes('');
   };
 
-  const handleAddCondition = () => {
+  const handleEditCondition = (c: HealthCondition) => {
+    setCondName(c.condition_name);
+    setCondDate(c.date_diagnosed);
+    setCondStatus(c.status);
+    setCondDoctor(c.managing_doctor || '');
+    setCondNotes(c.notes || '');
+    setEditingId(c.id);
+    setCondOpen(true);
+  };
+
+  const handleSaveCondition = async () => {
     if (!condName || !condDate) return;
-    setConditions(prev => [{
-      id: `cond-${Date.now()}`,
+    const details = {
+      status: condStatus,
+      managing_doctor: condDoctor || null,
+      notes: condNotes || null,
+    };
+    const item: HealthCondition = {
+      id: editingId ?? '',
       condition_name: condName,
       date_diagnosed: condDate,
       status: condStatus,
       managing_doctor: condDoctor || undefined,
       notes: condNotes || undefined,
-    }, ...prev]);
+    };
+    if (editingId) {
+      await supabase.from('medical_records').update({ title: condName, date: condDate, details }).eq('id', editingId);
+      setConditions(prev => prev.map(c => c.id === editingId ? item : c));
+      showToast('Saved');
+    } else {
+      const { data } = await supabase
+        .from('medical_records')
+        .insert({ user_id: userId, record_type: 'condition', title: condName, date: condDate, details })
+        .select('id')
+        .single();
+      if (data) setConditions(prev => [{ ...item, id: data.id }, ...prev]);
+    }
     resetCondForm();
+    setEditingId(null);
     setCondOpen(false);
   };
 
-  // Add illness form
+  const handleDeleteCondition = async (id: string) => {
+    await softDelete(id);
+    setConditions(prev => prev.filter(c => c.id !== id));
+    setDeleteConfirmId(null);
+    setExpandedId(null);
+    showToast('Deleted');
+  };
+
+  // ── Illness form ───────────────────────────────────────────────
   const [illOpen, setIllOpen] = useState(false);
   const [illName, setIllName] = useState('');
   const [illStart, setIllStart] = useState('');
@@ -597,10 +546,29 @@ const HealthHistoryTab = () => {
     setIllSeverity('mild'); setIllTreatment(''); setIllNotes('');
   };
 
-  const handleAddIllness = () => {
+  const handleEditIllness = (ill: Illness) => {
+    setIllName(ill.name);
+    setIllStart(ill.start_date);
+    setIllEnd(ill.end_date || '');
+    setIllOngoing(ill.ongoing);
+    setIllSeverity(ill.severity);
+    setIllTreatment(ill.treatment || '');
+    setIllNotes(ill.notes || '');
+    setEditingId(ill.id);
+    setIllOpen(true);
+  };
+
+  const handleSaveIllness = async () => {
     if (!illName || !illStart) return;
-    setIllnesses(prev => [{
-      id: `ill-${Date.now()}`,
+    const details = {
+      end_date: illOngoing ? null : illEnd || null,
+      ongoing: illOngoing,
+      severity: illSeverity,
+      treatment: illTreatment || null,
+      notes: illNotes || null,
+    };
+    const item: Illness = {
+      id: editingId ?? '',
       name: illName,
       start_date: illStart,
       end_date: illOngoing ? undefined : illEnd || undefined,
@@ -608,30 +576,56 @@ const HealthHistoryTab = () => {
       severity: illSeverity,
       treatment: illTreatment || undefined,
       notes: illNotes || undefined,
-    }, ...prev]);
+    };
+    if (editingId) {
+      await supabase.from('medical_records').update({ title: illName, date: illStart, details }).eq('id', editingId);
+      setIllnesses(prev => prev.map(i => i.id === editingId ? item : i));
+      showToast('Saved');
+    } else {
+      const { data } = await supabase
+        .from('medical_records')
+        .insert({ user_id: userId, record_type: 'illness', title: illName, date: illStart, details })
+        .select('id')
+        .single();
+      if (data) setIllnesses(prev => [{ ...item, id: data.id }, ...prev]);
+    }
     resetIllForm();
+    setEditingId(null);
     setIllOpen(false);
   };
 
-  const isCondOpen = sub === 'ongoing' ? condOpen : illOpen;
-  const setIsOpen = sub === 'ongoing' ? setCondOpen : setIllOpen;
+  const handleDeleteIllness = async (id: string) => {
+    await softDelete(id);
+    setIllnesses(prev => prev.filter(i => i.id !== id));
+    setDeleteConfirmId(null);
+    setExpandedId(null);
+    showToast('Deleted');
+  };
+
+  const isOpen = sub === 'ongoing' ? condOpen : illOpen;
+  const handleSetOpen = (v: boolean) => {
+    resetCondForm();
+    resetIllForm();
+    setEditingId(null);
+    if (sub === 'ongoing') setCondOpen(v);
+    else setIllOpen(v);
+  };
 
   return (
     <div className="space-y-4">
+      {toast && <ToastBar message={toast} />}
+
       <SectionHeader
         title="Health History"
         description="Conditions, diagnoses and illnesses, past and present"
         addLabel="Add"
-        open={isCondOpen}
-        setOpen={v => {
-          setIsOpen(v);
-          if (!v) { resetCondForm(); resetIllForm(); }
-        }}
+        open={isOpen}
+        setOpen={handleSetOpen}
         formContent={
           sub === 'ongoing' ? (
             <>
               <SheetHeader className="mb-4">
-                <SheetTitle>Add Condition</SheetTitle>
+                <SheetTitle>{editingId ? 'Edit Condition' : 'Add Condition'}</SheetTitle>
               </SheetHeader>
               <div className="space-y-4">
                 <FormField label="Condition name" required>
@@ -641,12 +635,15 @@ const HealthHistoryTab = () => {
                   <FormInput type="date" value={condDate} onChange={e => setCondDate(e.target.value)} className="appearance-none min-h-[2.5rem]" />
                 </FormField>
                 <FormField label="Status">
-                  <FormChips value={condStatus} onChange={v => setCondStatus(v as HealthCondition['status'])}
+                  <FormChips
+                    value={condStatus}
+                    onChange={v => setCondStatus(v as HealthCondition['status'])}
                     options={[
                       { value: 'active', label: 'Active' },
                       { value: 'managed', label: 'Managed' },
                       { value: 'in_remission', label: 'In remission' },
-                    ]} />
+                    ]}
+                  />
                 </FormField>
                 <FormField label="Managing doctor (optional)">
                   <FormInput value={condDoctor} onChange={e => setCondDoctor(e.target.value)} placeholder="Dr name" />
@@ -654,13 +651,15 @@ const HealthHistoryTab = () => {
                 <FormField label="Notes (optional)">
                   <FormTextarea value={condNotes} onChange={e => setCondNotes(e.target.value)} placeholder="Any context worth keeping…" />
                 </FormField>
-                <Button onClick={handleAddCondition} className="w-full" disabled={!condName || !condDate}>Save</Button>
+                <Button onClick={handleSaveCondition} className="w-full" disabled={!condName || !condDate}>
+                  {editingId ? 'Update' : 'Save'}
+                </Button>
               </div>
             </>
           ) : (
             <>
               <SheetHeader className="mb-4">
-                <SheetTitle>Add Illness or Bout</SheetTitle>
+                <SheetTitle>{editingId ? 'Edit Illness' : 'Add Illness or Bout'}</SheetTitle>
               </SheetHeader>
               <div className="space-y-4">
                 <FormField label="Name or description" required>
@@ -685,12 +684,15 @@ const HealthHistoryTab = () => {
                   </FormField>
                 )}
                 <FormField label="Severity">
-                  <FormChips value={illSeverity} onChange={v => setIllSeverity(v as Illness['severity'])}
+                  <FormChips
+                    value={illSeverity}
+                    onChange={v => setIllSeverity(v as Illness['severity'])}
                     options={[
                       { value: 'mild', label: 'Mild' },
                       { value: 'moderate', label: 'Moderate' },
                       { value: 'significant', label: 'Significant' },
-                    ]} />
+                    ]}
+                  />
                 </FormField>
                 <FormField label="How it was treated (optional)">
                   <FormTextarea value={illTreatment} onChange={e => setIllTreatment(e.target.value)} placeholder="What helped…" />
@@ -698,7 +700,9 @@ const HealthHistoryTab = () => {
                 <FormField label="Notes (optional)">
                   <FormTextarea value={illNotes} onChange={e => setIllNotes(e.target.value)} placeholder="Any other context…" />
                 </FormField>
-                <Button onClick={handleAddIllness} className="w-full" disabled={!illName || !illStart}>Save</Button>
+                <Button onClick={handleSaveIllness} className="w-full" disabled={!illName || !illStart}>
+                  {editingId ? 'Update' : 'Save'}
+                </Button>
               </div>
             </>
           )
@@ -711,10 +715,15 @@ const HealthHistoryTab = () => {
           { value: 'illnesses', label: 'Illnesses & Bouts' },
         ]}
         value={sub}
-        onChange={v => { setSub(v as typeof sub); setExpandedId(null); }}
+        onChange={v => { setSub(v as typeof sub); setExpandedId(null); setDeleteConfirmId(null); }}
       />
 
-      {sub === 'ongoing' && (
+      {loading ? (
+        <div className="space-y-2">
+          <Skeleton className="h-16" />
+          <Skeleton className="h-16" />
+        </div>
+      ) : sub === 'ongoing' ? (
         conditions.length === 0 ? (
           <EmptyState message="Nothing added yet. This is a good place to start." />
         ) : (
@@ -737,33 +746,43 @@ const HealthHistoryTab = () => {
                         <p className="mt-1.5 text-xs text-muted-foreground line-clamp-1">{c.notes}</p>
                       )}
                     </div>
-                    {c.notes && (
-                      <button
-                        onClick={() => setExpandedId(expanded ? null : c.id)}
-                        className="text-muted-foreground hover:text-foreground shrink-0 mt-0.5"
-                      >
-                        <ChevronDown className={cn('h-4 w-4 transition-transform', expanded && 'rotate-180')} />
-                      </button>
-                    )}
+                    <button
+                      onClick={() => { setExpandedId(expanded ? null : c.id); setDeleteConfirmId(null); }}
+                      className="text-muted-foreground hover:text-foreground shrink-0 mt-0.5"
+                    >
+                      <ChevronDown className={cn('h-4 w-4 transition-transform', expanded && 'rotate-180')} />
+                    </button>
                   </div>
-                  {expanded && c.notes && (
-                    <p className="mt-2 text-xs text-muted-foreground border-t pt-2 leading-relaxed">{c.notes}</p>
+                  {expanded && (
+                    <>
+                      {c.notes && (
+                        <p className="mt-2 text-xs text-muted-foreground border-t pt-2 leading-relaxed">{c.notes}</p>
+                      )}
+                      {deleteConfirmId === c.id ? (
+                        <DeleteConfirm
+                          onCancel={() => setDeleteConfirmId(null)}
+                          onConfirm={() => handleDeleteCondition(c.id)}
+                        />
+                      ) : (
+                        <CardActions
+                          onEdit={() => handleEditCondition(c)}
+                          onDelete={() => setDeleteConfirmId(c.id)}
+                        />
+                      )}
+                    </>
                   )}
                 </div>
               );
             })}
           </div>
         )
-      )}
-
-      {sub === 'illnesses' && (
+      ) : (
         illnesses.length === 0 ? (
           <EmptyState message="No illnesses logged. Hopefully it stays that way." />
         ) : (
           <div className="space-y-2">
             {illnesses.map(ill => {
               const expanded = expandedId === ill.id;
-              const hasDetail = ill.treatment || ill.notes;
               return (
                 <div key={ill.id} className="rounded-lg border bg-card p-4">
                   <div className="flex items-start justify-between gap-2">
@@ -784,25 +803,35 @@ const HealthHistoryTab = () => {
                         <p className="mt-1.5 text-xs text-muted-foreground line-clamp-1">{ill.treatment}</p>
                       )}
                     </div>
-                    {hasDetail && (
-                      <button
-                        onClick={() => setExpandedId(expanded ? null : ill.id)}
-                        className="text-muted-foreground hover:text-foreground shrink-0 mt-0.5"
-                      >
-                        <ChevronDown className={cn('h-4 w-4 transition-transform', expanded && 'rotate-180')} />
-                      </button>
-                    )}
+                    <button
+                      onClick={() => { setExpandedId(expanded ? null : ill.id); setDeleteConfirmId(null); }}
+                      className="text-muted-foreground hover:text-foreground shrink-0 mt-0.5"
+                    >
+                      <ChevronDown className={cn('h-4 w-4 transition-transform', expanded && 'rotate-180')} />
+                    </button>
                   </div>
                   {expanded && (
-                    <div className="mt-2 border-t pt-2 space-y-1.5">
-                      {ill.treatment && (
-                        <p className="text-xs text-muted-foreground">
-                          <span className="font-medium text-foreground">Treatment: </span>
-                          {ill.treatment}
-                        </p>
+                    <>
+                      <div className="mt-2 border-t pt-2 space-y-1.5">
+                        {ill.treatment && (
+                          <p className="text-xs text-muted-foreground">
+                            <span className="font-medium text-foreground">Treatment: </span>{ill.treatment}
+                          </p>
+                        )}
+                        {ill.notes && <p className="text-xs text-muted-foreground">{ill.notes}</p>}
+                      </div>
+                      {deleteConfirmId === ill.id ? (
+                        <DeleteConfirm
+                          onCancel={() => setDeleteConfirmId(null)}
+                          onConfirm={() => handleDeleteIllness(ill.id)}
+                        />
+                      ) : (
+                        <CardActions
+                          onEdit={() => handleEditIllness(ill)}
+                          onDelete={() => setDeleteConfirmId(ill.id)}
+                        />
                       )}
-                      {ill.notes && <p className="text-xs text-muted-foreground">{ill.notes}</p>}
-                    </div>
+                    </>
                   )}
                 </div>
               );
@@ -821,80 +850,117 @@ const HealthHistoryTab = () => {
 type LabParam = { name: string; value: string; unit: string; ref_low: string; ref_high: string };
 const emptyParam = (): LabParam => ({ name: '', value: '', unit: '', ref_low: '', ref_high: '' });
 
-const PLACEHOLDER_EXTRACTION: { testName: string; labName: string; params: LabParam[] } = {
-  testName: 'Full Blood Count',
-  labName: 'CityLab',
-  params: [
-    { name: 'Haemoglobin', value: '11.4', unit: 'g/dL', ref_low: '12.0', ref_high: '15.5' },
-    { name: 'WBC', value: '6.5', unit: '×10⁹/L', ref_low: '4.0', ref_high: '11.0' },
-    { name: 'Platelets', value: '238', unit: '×10⁹/L', ref_low: '150', ref_high: '400' },
-  ],
-};
-
-const LabsTab = () => {
-  const [labs, setLabs] = useState<LabResult[]>(INIT_LABS);
+const LabsTab = ({ userId }: { userId: string }) => {
+  const [allLabs, setAllLabs] = useState<LabResult[]>([]);
+  const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
-  const [addMode, setAddMode] = useState<'choose' | 'upload' | 'uploading' | 'confirm' | 'manual'>('choose');
+  const [addMode, setAddMode] = useState<'choose' | 'manual'>('choose');
+  const { toast, showToast } = useToast();
 
-  // Manual form state
   const [testName, setTestName] = useState('');
   const [labDate, setLabDate] = useState('');
   const [labName, setLabName] = useState('');
   const [params, setParams] = useState<LabParam[]>([emptyParam()]);
-  const [hasPdf, setHasPdf] = useState(false);
   const [paramsInfoOpen, setParamsInfoOpen] = useState(false);
+
+  useEffect(() => {
+    if (!userId) return;
+    setLoading(true);
+    fetchRecords(userId, 'lab_result').then(rows => {
+      setAllLabs(rows.map(dbToLab));
+      setLoading(false);
+    });
+  }, [userId]);
 
   const resetForm = () => {
     setTestName(''); setLabDate(''); setLabName('');
-    setParams([emptyParam()]); setHasPdf(false); setAddMode('choose');
+    setParams([emptyParam()]); setAddMode('choose');
   };
 
-  const handleSave = () => {
+  const handleEdit = (lab: LabResult) => {
+    setTestName(lab.test_name);
+    setLabDate(lab.date);
+    setLabName(lab.lab_name || '');
+    setParams(lab.parameters.map(p => ({
+      name: p.name,
+      value: String(p.value),
+      unit: p.unit,
+      ref_low: String(p.ref_low),
+      ref_high: String(p.ref_high),
+    })));
+    setEditingId(lab.id);
+    setAddMode('manual');
+    setOpen(true);
+  };
+
+  const handleSave = async () => {
     if (!testName || !labDate || params.every(p => !p.name)) return;
-    const validParams = params.filter(p => p.name && p.value);
-    setLabs(prev => [{
-      id: `lab-${Date.now()}`,
-      test_name: testName,
-      date: labDate,
-      lab_name: labName || undefined,
-      has_pdf: hasPdf,
-      parameters: validParams.map(p => ({
+    const validParams: LabParameter[] = params
+      .filter(p => p.name && p.value)
+      .map(p => ({
         name: p.name,
         value: parseFloat(p.value),
         unit: p.unit,
         ref_low: parseFloat(p.ref_low) || 0,
         ref_high: parseFloat(p.ref_high) || 0,
-      })),
-    }, ...prev]);
+      }));
+    const details = { lab_name: labName || null, parameters: validParams };
+    const item: LabResult = { id: editingId ?? '', test_name: testName, date: labDate, lab_name: labName || undefined, parameters: validParams };
+
+    if (editingId) {
+      await supabase.from('medical_records').update({ title: testName, date: labDate, details }).eq('id', editingId);
+      setAllLabs(prev => prev.map(l => l.id === editingId ? item : l));
+      showToast('Saved');
+    } else {
+      const { data } = await supabase
+        .from('medical_records')
+        .insert({ user_id: userId, record_type: 'lab_result', title: testName, date: labDate, details })
+        .select('id')
+        .single();
+      if (data) setAllLabs(prev => [{ ...item, id: data.id }, ...prev]);
+    }
     resetForm();
+    setEditingId(null);
     setOpen(false);
   };
 
-  const handleFileSelect = () => {
-    setAddMode('uploading');
-    setTimeout(() => {
-      setTestName(PLACEHOLDER_EXTRACTION.testName);
-      setLabName(PLACEHOLDER_EXTRACTION.labName);
-      setParams(PLACEHOLDER_EXTRACTION.params);
-      setHasPdf(true);
-      setAddMode('confirm');
-    }, 1200);
+  const handleDelete = async (id: string) => {
+    await softDelete(id);
+    setAllLabs(prev => prev.filter(l => l.id !== id));
+    setDeleteConfirmId(null);
+    setExpandedId(null);
+    showToast('Deleted');
   };
 
-  const sortedLabs = [...labs].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  // Deduplicate: show latest result per test_name in the list
+  const getParamTrend = (tName: string, pName: string): number[] =>
+    [...allLabs]
+      .filter(l => l.test_name === tName)
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      .flatMap(l => l.parameters.filter(p => p.name === pName).map(p => p.value));
+
+  const sortedLabs = [...allLabs].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   const latestByTest = new Map<string, LabResult>();
   sortedLabs.forEach(l => { if (!latestByTest.has(l.test_name)) latestByTest.set(l.test_name, l); });
 
   return (
     <div className="space-y-4">
+      {toast && <ToastBar message={toast} />}
+
       <div className="flex items-start justify-between gap-2">
         <div>
           <h2 className="text-xl font-bold">Labs</h2>
           <p className="text-xs text-muted-foreground">Blood tests and other lab results</p>
         </div>
-        <Sheet open={open} onOpenChange={v => { setOpen(v); if (!v) resetForm(); }}>
+        <Sheet
+          open={open}
+          onOpenChange={v => {
+            if (!v) { resetForm(); setEditingId(null); }
+            setOpen(v);
+          }}
+        >
           <SheetTrigger asChild>
             <Button variant="outline" size="sm" className="gap-1 shrink-0 mt-1">
               <Plus className="h-3.5 w-3.5" /> Add
@@ -907,17 +973,14 @@ const LabsTab = () => {
                   <SheetTitle>Add lab results</SheetTitle>
                 </SheetHeader>
                 <div className="space-y-3">
-                  <label className="block rounded-lg border-2 border-dashed border-border bg-muted/30 p-6 text-center cursor-pointer hover:bg-muted/50 transition-colors">
+                  <button
+                    onClick={() => showToast('PDF upload coming soon')}
+                    className="w-full rounded-lg border-2 border-dashed border-border bg-muted/30 p-6 text-center hover:bg-muted/50 transition-colors"
+                  >
                     <Upload className="h-6 w-6 mx-auto mb-2 text-muted-foreground" />
                     <p className="text-sm font-medium">Upload PDF report</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">Values will be extracted automatically</p>
-                    <input
-                      type="file"
-                      accept=".pdf"
-                      className="sr-only"
-                      onChange={handleFileSelect}
-                    />
-                  </label>
+                    <p className="text-xs text-muted-foreground mt-0.5">Coming soon</p>
+                  </button>
                   <div className="relative flex items-center gap-3">
                     <div className="flex-1 h-px bg-border" />
                     <span className="text-xs text-muted-foreground">or</span>
@@ -930,41 +993,21 @@ const LabsTab = () => {
               </>
             )}
 
-            {addMode === 'uploading' && (
-              <div className="py-12 text-center space-y-2">
-                <p className="text-sm font-medium">Extracting values…</p>
-                <p className="text-xs text-muted-foreground">Reading your lab report</p>
-              </div>
-            )}
-
-            {(addMode === 'confirm' || addMode === 'manual') && (
+            {addMode === 'manual' && (
               <>
                 <SheetHeader className="mb-4">
-                  <SheetTitle>
-                    {addMode === 'confirm' ? 'Confirm extracted values' : 'Add lab results'}
-                  </SheetTitle>
+                  <SheetTitle>{editingId ? 'Edit lab results' : 'Add lab results'}</SheetTitle>
                 </SheetHeader>
-                {addMode === 'confirm' && (
-                  <div className="mb-4 rounded-lg border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-                    These values were read from your PDF. Review and edit before saving.
-                  </div>
-                )}
                 <div className="space-y-4">
                   <FormField label="Test name" required>
                     <FormInput value={testName} onChange={e => setTestName(e.target.value)} placeholder="e.g. Full Blood Count" />
                   </FormField>
-                  <div className="space-y-4">
-                    <FormField label="Date" required>
-                      <div className="overflow-hidden w-full">
-                        <FormInput type="date" value={labDate} onChange={e => setLabDate(e.target.value)} className="w-full min-w-0 appearance-none min-h-[2.5rem]" />
-                      </div>
-                    </FormField>
-                    <FormField label="Lab name">
-                      <div className="overflow-hidden w-full">
-                        <FormInput value={labName} onChange={e => setLabName(e.target.value)} placeholder="Optional" className="w-full min-w-0" />
-                      </div>
-                    </FormField>
-                  </div>
+                  <FormField label="Date" required>
+                    <FormInput type="date" value={labDate} onChange={e => setLabDate(e.target.value)} className="w-full appearance-none min-h-[2.5rem]" />
+                  </FormField>
+                  <FormField label="Lab name">
+                    <FormInput value={labName} onChange={e => setLabName(e.target.value)} placeholder="Optional" />
+                  </FormField>
 
                   <div>
                     <div className="flex items-center gap-1.5 mb-2 relative">
@@ -980,7 +1023,7 @@ const LabsTab = () => {
                         <>
                           <div className="fixed inset-0 z-40" onClick={() => setParamsInfoOpen(false)} />
                           <div className="absolute left-0 top-full mt-1 z-50 w-64 rounded-lg border bg-card p-3 shadow-lg text-xs text-muted-foreground leading-relaxed">
-                            Add each individual measurement from your results. For example, a Full Blood Count would have separate parameters for Haemoglobin, Platelets, WBC etc. Include the reference range from your results sheet so we can track what is in or out of range over time.
+                            Add each individual measurement from your results. Include the reference range so we can track what is in or out of range over time.
                           </div>
                         </>
                       )}
@@ -1044,7 +1087,9 @@ const LabsTab = () => {
                     </button>
                   </div>
 
-                  <Button onClick={handleSave} className="w-full" disabled={!testName || !labDate}>Save</Button>
+                  <Button onClick={handleSave} className="w-full" disabled={!testName || !labDate}>
+                    {editingId ? 'Update' : 'Save'}
+                  </Button>
                 </div>
               </>
             )}
@@ -1052,7 +1097,12 @@ const LabsTab = () => {
         </Sheet>
       </div>
 
-      {labs.length === 0 ? (
+      {loading ? (
+        <div className="space-y-2">
+          <Skeleton className="h-16" />
+          <Skeleton className="h-16" />
+        </div>
+      ) : allLabs.length === 0 ? (
         <EmptyState message="No lab results yet. Add your first or upload a report." />
       ) : (
         <div className="space-y-2">
@@ -1062,7 +1112,7 @@ const LabsTab = () => {
             return (
               <div key={result.id} className="rounded-lg border bg-card">
                 <button
-                  onClick={() => setExpandedId(expanded ? null : result.id)}
+                  onClick={() => { setExpandedId(expanded ? null : result.id); setDeleteConfirmId(null); }}
                   className="w-full p-4 text-left"
                 >
                   <div className="flex items-start justify-between gap-2">
@@ -1084,7 +1134,7 @@ const LabsTab = () => {
                   <div className="border-t px-4 pb-4 pt-3 space-y-2">
                     {result.parameters.map(p => {
                       const inRange = p.value >= p.ref_low && p.value <= p.ref_high;
-                      const trend = getParamTrend(labs, result.test_name, p.name);
+                      const trend = getParamTrend(result.test_name, p.name);
                       return (
                         <div key={p.name} className="flex items-center justify-between gap-2 py-1.5 border-b border-border/50 last:border-0">
                           <div className="flex-1 min-w-0">
@@ -1107,7 +1157,17 @@ const LabsTab = () => {
                         </div>
                       );
                     })}
-                    {result.has_pdf && <PDFPlaceholder />}
+                    {deleteConfirmId === result.id ? (
+                      <DeleteConfirm
+                        onCancel={() => setDeleteConfirmId(null)}
+                        onConfirm={() => handleDelete(result.id)}
+                      />
+                    ) : (
+                      <CardActions
+                        onEdit={() => handleEdit(result)}
+                        onDelete={() => setDeleteConfirmId(result.id)}
+                      />
+                    )}
                   </div>
                 )}
               </div>
@@ -1123,10 +1183,14 @@ const LabsTab = () => {
    SCANS TAB
    ================================================================ */
 
-const ScansTab = () => {
-  const [scans, setScans] = useState<Scan[]>(INIT_SCANS);
+const ScansTab = ({ userId }: { userId: string }) => {
+  const [scans, setScans] = useState<Scan[]>([]);
+  const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
+  const { toast, showToast } = useToast();
 
   const [scanType, setScanType] = useState('');
   const [scanTypeOther, setScanTypeOther] = useState('');
@@ -1134,91 +1198,152 @@ const ScansTab = () => {
   const [facility, setFacility] = useState('');
   const [findings, setFindings] = useState('');
   const [summary, setSummary] = useState('');
-  const [hasPdf, setHasPdf] = useState(false);
+
+  useEffect(() => {
+    if (!userId) return;
+    setLoading(true);
+    fetchRecords(userId, 'scan').then(rows => {
+      setScans(rows.map(dbToScan));
+      setLoading(false);
+    });
+  }, [userId]);
 
   const resetForm = () => {
     setScanType(''); setScanTypeOther(''); setScanDate('');
-    setFacility(''); setFindings(''); setSummary(''); setHasPdf(false);
+    setFacility(''); setFindings(''); setSummary('');
   };
 
-  const handleSave = () => {
+  const handleEdit = (scan: Scan) => {
+    const knownTypes = ['ultrasound', 'mri', 'x-ray', 'ct_scan'];
+    const lower = scan.scan_type.toLowerCase();
+    if (knownTypes.includes(lower)) {
+      setScanType(lower);
+      setScanTypeOther('');
+    } else {
+      setScanType('other');
+      setScanTypeOther(scan.scan_type);
+    }
+    setScanDate(scan.date);
+    setFacility(scan.facility || '');
+    setFindings(scan.findings);
+    setSummary(scan.plain_language_summary || '');
+    setEditingId(scan.id);
+    setOpen(true);
+  };
+
+  const handleSave = async () => {
     const finalType = scanType === 'other' ? scanTypeOther : scanType;
     if (!finalType || !scanDate || !findings) return;
-    setScans(prev => [{
-      id: `scan-${Date.now()}`,
+    const details = {
+      facility: facility || null,
+      findings,
+      plain_summary: summary || null,
+    };
+    const item: Scan = {
+      id: editingId ?? '',
       scan_type: finalType,
       date: scanDate,
       facility: facility || undefined,
       findings,
       plain_language_summary: summary || undefined,
-      has_pdf: hasPdf,
-    }, ...prev]);
+    };
+    if (editingId) {
+      await supabase.from('medical_records').update({ title: finalType, date: scanDate, details }).eq('id', editingId);
+      setScans(prev => prev.map(s => s.id === editingId ? item : s));
+      showToast('Saved');
+    } else {
+      const { data } = await supabase
+        .from('medical_records')
+        .insert({ user_id: userId, record_type: 'scan', title: finalType, date: scanDate, details })
+        .select('id')
+        .single();
+      if (data) setScans(prev => [{ ...item, id: data.id }, ...prev]);
+    }
     resetForm();
+    setEditingId(null);
     setOpen(false);
   };
 
+  const handleDelete = async (id: string) => {
+    await softDelete(id);
+    setScans(prev => prev.filter(s => s.id !== id));
+    setDeleteConfirmId(null);
+    setExpandedId(null);
+    showToast('Deleted');
+  };
+
   const sorted = [...scans].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  const scanTypeOpts = ['Ultrasound', 'MRI', 'X-ray', 'CT scan', 'Other'];
+  const scanTypeOpts = [
+    { value: 'ultrasound', label: 'Ultrasound' },
+    { value: 'mri', label: 'MRI' },
+    { value: 'x-ray', label: 'X-ray' },
+    { value: 'ct_scan', label: 'CT scan' },
+    { value: 'other', label: 'Other' },
+  ];
 
   return (
     <div className="space-y-4">
+      {toast && <ToastBar message={toast} />}
+
       <SectionHeader
         title="Scans"
         description="Ultrasounds, MRIs, X-rays and imaging reports"
         addLabel="Add"
         open={open}
-        setOpen={v => { setOpen(v); if (!v) resetForm(); }}
+        setOpen={v => {
+          if (!v) { resetForm(); setEditingId(null); }
+          setOpen(v);
+        }}
         formContent={
           <>
             <SheetHeader className="mb-4">
-              <SheetTitle>Add Scan</SheetTitle>
+              <SheetTitle>{editingId ? 'Edit Scan' : 'Add Scan'}</SheetTitle>
             </SheetHeader>
             <div className="space-y-4">
               <FormField label="Scan type" required>
-                <FormChips value={scanType} onChange={setScanType}
-                  options={scanTypeOpts.map(s => ({ value: s.toLowerCase().replace(' ', '_'), label: s }))} />
+                <FormChips value={scanType} onChange={setScanType} options={scanTypeOpts} />
                 {scanType === 'other' && (
                   <FormInput className="mt-2" value={scanTypeOther} onChange={e => setScanTypeOther(e.target.value)} placeholder="Specify type…" />
                 )}
               </FormField>
-              <div className="space-y-4">
-                <FormField label="Date" required>
-                  <div className="overflow-hidden w-full">
-                    <FormInput type="date" value={scanDate} onChange={e => setScanDate(e.target.value)} className="w-full min-w-0 appearance-none min-h-[2.5rem]" />
-                  </div>
-                </FormField>
-                <FormField label="Facility">
-                  <div className="overflow-hidden w-full">
-                    <FormInput value={facility} onChange={e => setFacility(e.target.value)} placeholder="Optional" className="w-full min-w-0" />
-                  </div>
-                </FormField>
-              </div>
+              <FormField label="Date" required>
+                <FormInput type="date" value={scanDate} onChange={e => setScanDate(e.target.value)} className="w-full appearance-none min-h-[2.5rem]" />
+              </FormField>
+              <FormField label="Facility">
+                <FormInput value={facility} onChange={e => setFacility(e.target.value)} placeholder="Optional" />
+              </FormField>
               <FormField label="Key findings" required>
                 <FormTextarea value={findings} onChange={e => setFindings(e.target.value)} placeholder="What the report says…" />
               </FormField>
               <FormField label="Plain language summary (optional)">
                 <FormTextarea value={summary} onChange={e => setSummary(e.target.value)} placeholder="What it means in your own words…" />
               </FormField>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="file" accept=".pdf" className="sr-only" onChange={() => setHasPdf(true)} />
-                <div className={cn(
-                  'flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors',
-                  hasPdf ? 'border-primary text-primary bg-primary/5' : 'border-border text-muted-foreground hover:bg-muted',
-                )}>
-                  <Upload className="h-4 w-4" />
-                  {hasPdf ? 'PDF attached' : 'Attach PDF report (optional)'}
-                </div>
-              </label>
-              <Button onClick={handleSave} className="w-full"
-                disabled={!(scanType === 'other' ? scanTypeOther : scanType) || !scanDate || !findings}>
-                Save
+              <button
+                type="button"
+                onClick={() => showToast('PDF upload coming soon')}
+                className="flex items-center gap-2 rounded-lg border border-border text-muted-foreground px-3 py-2 text-sm hover:bg-muted transition-colors w-full"
+              >
+                <Upload className="h-4 w-4" />
+                Attach PDF report (coming soon)
+              </button>
+              <Button
+                onClick={handleSave}
+                className="w-full"
+                disabled={!(scanType === 'other' ? scanTypeOther : scanType) || !scanDate || !findings}
+              >
+                {editingId ? 'Update' : 'Save'}
               </Button>
             </div>
           </>
         }
       />
 
-      {scans.length === 0 ? (
+      {loading ? (
+        <div className="space-y-2">
+          <Skeleton className="h-16" />
+          <Skeleton className="h-16" />
+        </div>
+      ) : scans.length === 0 ? (
         <EmptyState message="No scans logged yet." />
       ) : (
         <div className="space-y-2">
@@ -1227,7 +1352,7 @@ const ScansTab = () => {
             return (
               <div key={scan.id} className="rounded-lg border bg-card">
                 <button
-                  onClick={() => setExpandedId(expanded ? null : scan.id)}
+                  onClick={() => { setExpandedId(expanded ? null : scan.id); setDeleteConfirmId(null); }}
                   className="w-full p-4 text-left"
                 >
                   <div className="flex items-start justify-between gap-2">
@@ -1256,7 +1381,17 @@ const ScansTab = () => {
                         <p className="text-xs text-muted-foreground leading-relaxed">{scan.plain_language_summary}</p>
                       </div>
                     )}
-                    {scan.has_pdf && <PDFPlaceholder />}
+                    {deleteConfirmId === scan.id ? (
+                      <DeleteConfirm
+                        onCancel={() => setDeleteConfirmId(null)}
+                        onConfirm={() => handleDelete(scan.id)}
+                      />
+                    ) : (
+                      <CardActions
+                        onEdit={() => handleEdit(scan)}
+                        onDelete={() => setDeleteConfirmId(scan.id)}
+                      />
+                    )}
                   </div>
                 )}
               </div>
@@ -1272,10 +1407,14 @@ const ScansTab = () => {
    MEDICATIONS TAB
    ================================================================ */
 
-const MedicationsTab = () => {
-  const [meds, setMeds] = useState<Medication[]>(INIT_MEDICATIONS);
+const MedicationsTab = ({ userId }: { userId: string }) => {
+  const [meds, setMeds] = useState<Medication[]>([]);
+  const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
+  const { toast, showToast } = useToast();
 
   const [name, setName] = useState('');
   const [medType, setMedType] = useState<'prescribed' | 'otc'>('prescribed');
@@ -1289,18 +1428,57 @@ const MedicationsTab = () => {
   const [reason, setReason] = useState('');
   const [notes, setNotes] = useState('');
 
+  useEffect(() => {
+    if (!userId) return;
+    setLoading(true);
+    fetchRecords(userId, 'medication').then(rows => {
+      setMeds(rows.map(dbToMedication));
+      setLoading(false);
+    });
+  }, [userId]);
+
   const resetForm = () => {
     setName(''); setMedType('prescribed'); setDose(''); setFreq(''); setFreqOther('');
     setStartDate(''); setEndDate(''); setCurrentlyTaking(true); setPrescriber('');
     setReason(''); setNotes('');
   };
 
-  const handleSave = () => {
+  const handleEdit = (med: Medication) => {
+    setName(med.name);
+    setMedType(med.med_type);
+    setDose(med.dose);
+    const knownFreqs = ['once_daily', 'twice_daily', 'as_needed'];
+    const freqVal = med.frequency.toLowerCase().replace(/ /g, '_');
+    if (knownFreqs.includes(freqVal)) { setFreq(freqVal); setFreqOther(''); }
+    else { setFreq('other'); setFreqOther(med.frequency); }
+    setStartDate(med.start_date);
+    setEndDate(med.end_date || '');
+    setCurrentlyTaking(med.currently_taking);
+    setPrescriber(med.prescriber || '');
+    setReason(med.reason || '');
+    setNotes(med.notes || '');
+    setEditingId(med.id);
+    setOpen(true);
+  };
+
+  const handleSave = async () => {
     if (!name || !dose || !startDate) return;
     const finalFreq = freq === 'other' ? freqOther : freq;
-    setMeds(prev => [{
-      id: `med-${Date.now()}`,
-      name, type: medType, dose,
+    const details = {
+      med_type: medType,
+      dose,
+      frequency: finalFreq,
+      end_date: currentlyTaking ? null : endDate || null,
+      currently_taking: currentlyTaking,
+      prescriber: medType === 'prescribed' ? (prescriber || null) : null,
+      reason: reason || null,
+      notes: notes || null,
+    };
+    const item: Medication = {
+      id: editingId ?? '',
+      name,
+      med_type: medType,
+      dose,
       frequency: finalFreq,
       start_date: startDate,
       end_date: currentlyTaking ? undefined : endDate || undefined,
@@ -1308,30 +1486,60 @@ const MedicationsTab = () => {
       prescriber: medType === 'prescribed' ? (prescriber || undefined) : undefined,
       reason: reason || undefined,
       notes: notes || undefined,
-    }, ...prev]);
+    };
+    if (editingId) {
+      await supabase.from('medical_records').update({ title: name, date: startDate, details }).eq('id', editingId);
+      setMeds(prev => prev.map(m => m.id === editingId ? item : m));
+      showToast('Saved');
+    } else {
+      const { data } = await supabase
+        .from('medical_records')
+        .insert({ user_id: userId, record_type: 'medication', title: name, date: startDate, details })
+        .select('id')
+        .single();
+      if (data) setMeds(prev => [{ ...item, id: data.id }, ...prev]);
+    }
     resetForm();
+    setEditingId(null);
     setOpen(false);
+  };
+
+  const handleDelete = async (id: string) => {
+    await softDelete(id);
+    setMeds(prev => prev.filter(m => m.id !== id));
+    setDeleteConfirmId(null);
+    setExpandedId(null);
+    showToast('Deleted');
   };
 
   const sorted = [...meds].sort((a, b) => {
     if (a.currently_taking !== b.currently_taking) return a.currently_taking ? -1 : 1;
     return new Date(b.start_date).getTime() - new Date(a.start_date).getTime();
   });
-
-  const freqOpts = ['Once daily', 'Twice daily', 'As needed', 'Other'];
+  const freqOpts = [
+    { value: 'once_daily', label: 'Once daily' },
+    { value: 'twice_daily', label: 'Twice daily' },
+    { value: 'as_needed', label: 'As needed' },
+    { value: 'other', label: 'Other' },
+  ];
 
   return (
     <div className="space-y-4">
+      {toast && <ToastBar message={toast} />}
+
       <SectionHeader
         title="Medications"
         description="Prescribed and over-the-counter medications you're taking"
         addLabel="Add"
         open={open}
-        setOpen={v => { setOpen(v); if (!v) resetForm(); }}
+        setOpen={v => {
+          if (!v) { resetForm(); setEditingId(null); }
+          setOpen(v);
+        }}
         formContent={
           <>
             <SheetHeader className="mb-4">
-              <SheetTitle>Add Medication</SheetTitle>
+              <SheetTitle>{editingId ? 'Edit Medication' : 'Add Medication'}</SheetTitle>
             </SheetHeader>
             <div className="space-y-4">
               <FormField label="Medication name" required>
@@ -1341,19 +1549,14 @@ const MedicationsTab = () => {
                 <FormChips value={medType} onChange={v => setMedType(v as 'prescribed' | 'otc')}
                   options={[{ value: 'prescribed', label: 'Prescribed' }, { value: 'otc', label: 'Over the counter' }]} />
               </FormField>
-              <div className="space-y-4">
-                <FormField label="Dose" required>
-                  <FormInput value={dose} onChange={e => setDose(e.target.value)} placeholder="e.g. 500mg" />
-                </FormField>
-                <FormField label="Start date" required>
-                  <div className="overflow-hidden w-full">
-                    <FormInput type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full min-w-0 appearance-none min-h-[2.5rem]" />
-                  </div>
-                </FormField>
-              </div>
+              <FormField label="Dose" required>
+                <FormInput value={dose} onChange={e => setDose(e.target.value)} placeholder="e.g. 500mg" />
+              </FormField>
+              <FormField label="Start date" required>
+                <FormInput type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full appearance-none min-h-[2.5rem]" />
+              </FormField>
               <FormField label="Frequency">
-                <FormChips value={freq} onChange={setFreq}
-                  options={freqOpts.map(f => ({ value: f.toLowerCase().replace(' ', '_'), label: f }))} />
+                <FormChips value={freq} onChange={setFreq} options={freqOpts} />
                 {freq === 'other' && (
                   <FormInput className="mt-2" value={freqOther} onChange={e => setFreqOther(e.target.value)} placeholder="e.g. Every 8 hours" />
                 )}
@@ -1364,7 +1567,7 @@ const MedicationsTab = () => {
               </div>
               {!currentlyTaking && (
                 <FormField label="End date">
-                  <FormInput type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
+                  <FormInput type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="appearance-none min-h-[2.5rem]" />
                 </FormField>
               )}
               {medType === 'prescribed' && (
@@ -1378,13 +1581,20 @@ const MedicationsTab = () => {
               <FormField label="Notes (optional)">
                 <FormTextarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Anything else worth noting…" />
               </FormField>
-              <Button onClick={handleSave} className="w-full" disabled={!name || !dose || !startDate}>Save</Button>
+              <Button onClick={handleSave} className="w-full" disabled={!name || !dose || !startDate}>
+                {editingId ? 'Update' : 'Save'}
+              </Button>
             </div>
           </>
         }
       />
 
-      {meds.length === 0 ? (
+      {loading ? (
+        <div className="space-y-2">
+          <Skeleton className="h-16" />
+          <Skeleton className="h-16" />
+        </div>
+      ) : meds.length === 0 ? (
         <EmptyState message="Nothing here yet." />
       ) : (
         <div className="space-y-2">
@@ -1393,14 +1603,14 @@ const MedicationsTab = () => {
             return (
               <div key={med.id} className="rounded-lg border bg-card">
                 <button
-                  onClick={() => setExpandedId(expanded ? null : med.id)}
+                  onClick={() => { setExpandedId(expanded ? null : med.id); setDeleteConfirmId(null); }}
                   className="w-full p-4 text-left"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <p className="text-sm font-semibold">{med.name}</p>
-                        <TypeBadge type={med.type} />
+                        <TypeBadge type={med.med_type} />
                         {!med.currently_taking && (
                           <span className="rounded-full px-2 py-0.5 text-[10px] font-medium bg-muted text-muted-foreground">Stopped</span>
                         )}
@@ -1429,8 +1639,17 @@ const MedicationsTab = () => {
                         <span className="font-medium text-foreground">Reason: </span>{med.reason}
                       </p>
                     )}
-                    {med.notes && (
-                      <p className="text-xs text-muted-foreground leading-relaxed">{med.notes}</p>
+                    {med.notes && <p className="text-xs text-muted-foreground leading-relaxed">{med.notes}</p>}
+                    {deleteConfirmId === med.id ? (
+                      <DeleteConfirm
+                        onCancel={() => setDeleteConfirmId(null)}
+                        onConfirm={() => handleDelete(med.id)}
+                      />
+                    ) : (
+                      <CardActions
+                        onEdit={() => handleEdit(med)}
+                        onDelete={() => setDeleteConfirmId(med.id)}
+                      />
                     )}
                   </div>
                 )}
@@ -1447,10 +1666,14 @@ const MedicationsTab = () => {
    SUPPLEMENTS TAB
    ================================================================ */
 
-const SupplementsTab = () => {
-  const [supps, setSupps] = useState<Supplement[]>(INIT_SUPPLEMENTS);
+const SupplementsTab = ({ userId }: { userId: string }) => {
+  const [supps, setSupps] = useState<Supplement[]>([]);
+  const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
+  const { toast, showToast } = useToast();
 
   const [name, setName] = useState('');
   const [dose, setDose] = useState('');
@@ -1462,65 +1685,124 @@ const SupplementsTab = () => {
   const [reason, setReason] = useState('');
   const [notes, setNotes] = useState('');
 
+  useEffect(() => {
+    if (!userId) return;
+    setLoading(true);
+    fetchRecords(userId, 'supplement').then(rows => {
+      setSupps(rows.map(dbToSupplement));
+      setLoading(false);
+    });
+  }, [userId]);
+
   const resetForm = () => {
     setName(''); setDose(''); setFreq(''); setFreqOther('');
     setStartDate(''); setEndDate(''); setCurrentlyTaking(true); setReason(''); setNotes('');
   };
 
-  const handleSave = () => {
+  const handleEdit = (sup: Supplement) => {
+    setName(sup.name);
+    setDose(sup.dose);
+    const knownFreqs = ['once_daily', 'twice_daily', 'as_needed'];
+    const freqVal = sup.frequency.toLowerCase().replace(/ /g, '_');
+    if (knownFreqs.includes(freqVal)) { setFreq(freqVal); setFreqOther(''); }
+    else { setFreq('other'); setFreqOther(sup.frequency); }
+    setStartDate(sup.start_date);
+    setEndDate(sup.end_date || '');
+    setCurrentlyTaking(sup.currently_taking);
+    setReason(sup.reason || '');
+    setNotes(sup.notes || '');
+    setEditingId(sup.id);
+    setOpen(true);
+  };
+
+  const handleSave = async () => {
     if (!name || !dose || !startDate) return;
     const finalFreq = freq === 'other' ? freqOther : freq;
-    setSupps(prev => [{
-      id: `sup-${Date.now()}`,
-      name, dose,
+    const details = {
+      dose,
+      frequency: finalFreq,
+      end_date: currentlyTaking ? null : endDate || null,
+      currently_taking: currentlyTaking,
+      reason: reason || null,
+      notes: notes || null,
+    };
+    const item: Supplement = {
+      id: editingId ?? '',
+      name,
+      dose,
       frequency: finalFreq,
       start_date: startDate,
       end_date: currentlyTaking ? undefined : endDate || undefined,
       currently_taking: currentlyTaking,
       reason: reason || undefined,
       notes: notes || undefined,
-    }, ...prev]);
+    };
+    if (editingId) {
+      await supabase.from('medical_records').update({ title: name, date: startDate, details }).eq('id', editingId);
+      setSupps(prev => prev.map(s => s.id === editingId ? item : s));
+      showToast('Saved');
+    } else {
+      const { data } = await supabase
+        .from('medical_records')
+        .insert({ user_id: userId, record_type: 'supplement', title: name, date: startDate, details })
+        .select('id')
+        .single();
+      if (data) setSupps(prev => [{ ...item, id: data.id }, ...prev]);
+    }
     resetForm();
+    setEditingId(null);
     setOpen(false);
+  };
+
+  const handleDelete = async (id: string) => {
+    await softDelete(id);
+    setSupps(prev => prev.filter(s => s.id !== id));
+    setDeleteConfirmId(null);
+    setExpandedId(null);
+    showToast('Deleted');
   };
 
   const sorted = [...supps].sort((a, b) => {
     if (a.currently_taking !== b.currently_taking) return a.currently_taking ? -1 : 1;
     return new Date(b.start_date).getTime() - new Date(a.start_date).getTime();
   });
-
-  const freqOpts = ['Once daily', 'Twice daily', 'As needed', 'Other'];
+  const freqOpts = [
+    { value: 'once_daily', label: 'Once daily' },
+    { value: 'twice_daily', label: 'Twice daily' },
+    { value: 'as_needed', label: 'As needed' },
+    { value: 'other', label: 'Other' },
+  ];
 
   return (
     <div className="space-y-4">
+      {toast && <ToastBar message={toast} />}
+
       <SectionHeader
         title="Supplements"
         description="Vitamins, minerals and other supplements you're taking"
         addLabel="Add"
         open={open}
-        setOpen={v => { setOpen(v); if (!v) resetForm(); }}
+        setOpen={v => {
+          if (!v) { resetForm(); setEditingId(null); }
+          setOpen(v);
+        }}
         formContent={
           <>
             <SheetHeader className="mb-4">
-              <SheetTitle>Add Supplement</SheetTitle>
+              <SheetTitle>{editingId ? 'Edit Supplement' : 'Add Supplement'}</SheetTitle>
             </SheetHeader>
             <div className="space-y-4">
               <FormField label="Supplement name" required>
                 <FormInput value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Iron Bisglycinate" />
               </FormField>
-              <div className="space-y-4">
-                <FormField label="Dose" required>
-                  <FormInput value={dose} onChange={e => setDose(e.target.value)} placeholder="e.g. 25mg" />
-                </FormField>
-                <FormField label="Start date" required>
-                  <div className="overflow-hidden w-full">
-                    <FormInput type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full min-w-0 appearance-none min-h-[2.5rem]" />
-                  </div>
-                </FormField>
-              </div>
+              <FormField label="Dose" required>
+                <FormInput value={dose} onChange={e => setDose(e.target.value)} placeholder="e.g. 25mg" />
+              </FormField>
+              <FormField label="Start date" required>
+                <FormInput type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full appearance-none min-h-[2.5rem]" />
+              </FormField>
               <FormField label="Frequency">
-                <FormChips value={freq} onChange={setFreq}
-                  options={freqOpts.map(f => ({ value: f.toLowerCase().replace(' ', '_'), label: f }))} />
+                <FormChips value={freq} onChange={setFreq} options={freqOpts} />
                 {freq === 'other' && (
                   <FormInput className="mt-2" value={freqOther} onChange={e => setFreqOther(e.target.value)} placeholder="e.g. With meals" />
                 )}
@@ -1531,7 +1813,7 @@ const SupplementsTab = () => {
               </div>
               {!currentlyTaking && (
                 <FormField label="End date">
-                  <FormInput type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
+                  <FormInput type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="appearance-none min-h-[2.5rem]" />
                 </FormField>
               )}
               <FormField label="Reason or intention (optional)">
@@ -1540,13 +1822,20 @@ const SupplementsTab = () => {
               <FormField label="Notes (optional)">
                 <FormTextarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Anything else…" />
               </FormField>
-              <Button onClick={handleSave} className="w-full" disabled={!name || !dose || !startDate}>Save</Button>
+              <Button onClick={handleSave} className="w-full" disabled={!name || !dose || !startDate}>
+                {editingId ? 'Update' : 'Save'}
+              </Button>
             </div>
           </>
         }
       />
 
-      {supps.length === 0 ? (
+      {loading ? (
+        <div className="space-y-2">
+          <Skeleton className="h-16" />
+          <Skeleton className="h-16" />
+        </div>
+      ) : supps.length === 0 ? (
         <EmptyState message="Nothing logged yet." />
       ) : (
         <div className="space-y-2">
@@ -1555,7 +1844,7 @@ const SupplementsTab = () => {
             return (
               <div key={sup.id} className="rounded-lg border bg-card">
                 <button
-                  onClick={() => setExpandedId(expanded ? null : sup.id)}
+                  onClick={() => { setExpandedId(expanded ? null : sup.id); setDeleteConfirmId(null); }}
                   className="w-full p-4 text-left"
                 >
                   <div className="flex items-start justify-between gap-2">
@@ -1576,7 +1865,7 @@ const SupplementsTab = () => {
                     <ChevronDown className={cn('h-4 w-4 text-muted-foreground shrink-0 mt-0.5 transition-transform', expanded && 'rotate-180')} />
                   </div>
                 </button>
-                {expanded && (sup.reason || sup.notes) && (
+                {expanded && (
                   <div className="border-t px-4 pb-4 pt-3 space-y-1.5">
                     {sup.reason && (
                       <p className="text-xs text-muted-foreground leading-relaxed">
@@ -1584,6 +1873,17 @@ const SupplementsTab = () => {
                       </p>
                     )}
                     {sup.notes && <p className="text-xs text-muted-foreground">{sup.notes}</p>}
+                    {deleteConfirmId === sup.id ? (
+                      <DeleteConfirm
+                        onCancel={() => setDeleteConfirmId(null)}
+                        onConfirm={() => handleDelete(sup.id)}
+                      />
+                    ) : (
+                      <CardActions
+                        onEdit={() => handleEdit(sup)}
+                        onDelete={() => setDeleteConfirmId(sup.id)}
+                      />
+                    )}
                   </div>
                 )}
               </div>
@@ -1599,13 +1899,27 @@ const SupplementsTab = () => {
    APPOINTMENTS TAB
    ================================================================ */
 
-const AppointmentsTab = () => {
+const AppointmentsTab = ({ userId }: { userId: string }) => {
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [loading, setLoading] = useState(true);
   const [sub, setSub] = useState<'upcoming' | 'past'>('upcoming');
-  const [upcoming, setUpcoming] = useState<UpcomingAppointment[]>(INIT_UPCOMING);
-  const [past, setPast] = useState<PastAppointment[]>(INIT_PAST);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const { toast, showToast } = useToast();
 
-  // Upcoming form
+  const todayStr = format(new Date(), 'yyyy-MM-dd');
+
+  useEffect(() => {
+    if (!userId) return;
+    setLoading(true);
+    fetchRecords(userId, 'appointment').then(rows => {
+      setAppointments(rows.map(dbToAppointment));
+      setLoading(false);
+    });
+  }, [userId]);
+
+  // ── Upcoming form ──────────────────────────────────────────────
   const [upOpen, setUpOpen] = useState(false);
   const [upProvider, setUpProvider] = useState('');
   const [upSpecialty, setUpSpecialty] = useState('');
@@ -1619,22 +1933,52 @@ const AppointmentsTab = () => {
     setUpTime(''); setUpDiscussion(''); setUpPrep('');
   };
 
-  const handleAddUpcoming = () => {
+  const handleEditUpcoming = (apt: Appointment) => {
+    setUpProvider(apt.provider);
+    setUpSpecialty(apt.specialty || '');
+    setUpDate(apt.date);
+    setUpTime(apt.time || '');
+    setUpDiscussion(apt.what_to_discuss || '');
+    setUpPrep(apt.prep_needed || '');
+    setEditingId(apt.id);
+    setUpOpen(true);
+  };
+
+  const handleSaveUpcoming = async () => {
     if (!upProvider || !upDate || !upDiscussion) return;
-    const dt = upTime ? `${upDate}T${upTime}` : upDate;
-    setUpcoming(prev => [{
-      id: `apt-up-${Date.now()}`,
+    const details = {
+      specialty: upSpecialty || null,
+      time: upTime || null,
+      what_to_discuss: upDiscussion,
+      prep_needed: upPrep || null,
+    };
+    const item: Appointment = {
+      id: editingId ?? '',
       provider: upProvider,
-      specialty: upSpecialty,
-      date_time: dt,
-      discussion: upDiscussion,
-      prep: upPrep || undefined,
-    }, ...prev].sort((a, b) => new Date(a.date_time).getTime() - new Date(b.date_time).getTime()));
+      date: upDate,
+      specialty: upSpecialty || undefined,
+      time: upTime || undefined,
+      what_to_discuss: upDiscussion,
+      prep_needed: upPrep || undefined,
+    };
+    if (editingId) {
+      await supabase.from('medical_records').update({ title: upProvider, date: upDate, details }).eq('id', editingId);
+      setAppointments(prev => prev.map(a => a.id === editingId ? item : a));
+      showToast('Saved');
+    } else {
+      const { data } = await supabase
+        .from('medical_records')
+        .insert({ user_id: userId, record_type: 'appointment', title: upProvider, date: upDate, details })
+        .select('id')
+        .single();
+      if (data) setAppointments(prev => [{ ...item, id: data.id }, ...prev]);
+    }
     resetUpForm();
+    setEditingId(null);
     setUpOpen(false);
   };
 
-  // Past form
+  // ── Past form ──────────────────────────────────────────────────
   const [pastOpen, setPastOpen] = useState(false);
   const [pastProvider, setPastProvider] = useState('');
   const [pastSpecialty, setPastSpecialty] = useState('');
@@ -1649,40 +1993,88 @@ const AppointmentsTab = () => {
     setPastSummary(''); setPastActions(''); setPastFollowup(''); setPastNewDx('');
   };
 
-  const handleAddPast = () => {
+  const handleEditPast = (apt: Appointment) => {
+    setPastProvider(apt.provider);
+    setPastSpecialty(apt.specialty || '');
+    setPastDate(apt.date);
+    setPastSummary(apt.summary || '');
+    setPastActions(apt.action_items || '');
+    setPastFollowup(apt.followup_date || '');
+    setPastNewDx(apt.new_diagnosis || '');
+    setEditingId(apt.id);
+    setPastOpen(true);
+  };
+
+  const handleSavePast = async () => {
     if (!pastProvider || !pastDate || !pastSummary) return;
-    setPast(prev => [{
-      id: `apt-past-${Date.now()}`,
+    const details = {
+      specialty: pastSpecialty || null,
+      summary: pastSummary,
+      action_items: pastActions || null,
+      followup_date: pastFollowup || null,
+      new_diagnosis: pastNewDx || null,
+    };
+    const item: Appointment = {
+      id: editingId ?? '',
       provider: pastProvider,
-      specialty: pastSpecialty,
       date: pastDate,
+      specialty: pastSpecialty || undefined,
       summary: pastSummary,
       action_items: pastActions || undefined,
       followup_date: pastFollowup || undefined,
       new_diagnosis: pastNewDx || undefined,
-    }, ...prev]);
+    };
+    if (editingId) {
+      await supabase.from('medical_records').update({ title: pastProvider, date: pastDate, details }).eq('id', editingId);
+      setAppointments(prev => prev.map(a => a.id === editingId ? item : a));
+      showToast('Saved');
+    } else {
+      const { data } = await supabase
+        .from('medical_records')
+        .insert({ user_id: userId, record_type: 'appointment', title: pastProvider, date: pastDate, details })
+        .select('id')
+        .single();
+      if (data) setAppointments(prev => [{ ...item, id: data.id }, ...prev]);
+    }
     resetPastForm();
+    setEditingId(null);
     setPastOpen(false);
   };
 
-  const isOpen = sub === 'upcoming' ? upOpen : pastOpen;
-  const setIsOpen = sub === 'upcoming' ? setUpOpen : setPastOpen;
+  const handleDelete = async (id: string) => {
+    await softDelete(id);
+    setAppointments(prev => prev.filter(a => a.id !== id));
+    setDeleteConfirmId(null);
+    setExpandedId(null);
+    showToast('Deleted');
+  };
 
-  const sortedUpcoming = [...upcoming].sort((a, b) =>
-    new Date(a.date_time).getTime() - new Date(b.date_time).getTime()
-  );
-  const sortedPast = [...past].sort((a, b) =>
-    new Date(b.date).getTime() - new Date(a.date).getTime()
-  );
+  const isOpen = sub === 'upcoming' ? upOpen : pastOpen;
+  const handleSetOpen = (v: boolean) => {
+    resetUpForm();
+    resetPastForm();
+    setEditingId(null);
+    if (sub === 'upcoming') setUpOpen(v);
+    else setPastOpen(v);
+  };
+
+  const sortedUpcoming = appointments
+    .filter(a => a.date >= todayStr)
+    .sort((a, b) => a.date.localeCompare(b.date) || (a.time || '').localeCompare(b.time || ''));
+  const sortedPast = appointments
+    .filter(a => a.date < todayStr)
+    .sort((a, b) => b.date.localeCompare(a.date));
 
   return (
     <div className="space-y-4">
+      {toast && <ToastBar message={toast} />}
+
       <div className="flex items-start justify-between gap-2">
         <div>
           <h2 className="text-xl font-bold">Appointments</h2>
           <p className="text-xs text-muted-foreground">Doctor and specialist consultations</p>
         </div>
-        <Sheet open={isOpen} onOpenChange={v => { setIsOpen(v); if (!v) { resetUpForm(); resetPastForm(); } }}>
+        <Sheet open={isOpen} onOpenChange={handleSetOpen}>
           <SheetTrigger asChild>
             <Button variant="outline" size="sm" className="gap-1 shrink-0 mt-1">
               <Plus className="h-3.5 w-3.5" /> Add
@@ -1692,7 +2084,7 @@ const AppointmentsTab = () => {
             {sub === 'upcoming' ? (
               <>
                 <SheetHeader className="mb-4">
-                  <SheetTitle>Add Upcoming Appointment</SheetTitle>
+                  <SheetTitle>{editingId ? 'Edit Appointment' : 'Add Upcoming Appointment'}</SheetTitle>
                 </SheetHeader>
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-3">
@@ -1703,31 +2095,27 @@ const AppointmentsTab = () => {
                       <FormInput value={upSpecialty} onChange={e => setUpSpecialty(e.target.value)} placeholder="e.g. Gynaecology" />
                     </FormField>
                   </div>
-                  <div className="space-y-4">
-                    <FormField label="Date" required>
-                      <div className="overflow-hidden w-full">
-                        <FormInput type="date" value={upDate} onChange={e => setUpDate(e.target.value)} className="w-full min-w-0 appearance-none min-h-[2.5rem]" />
-                      </div>
-                    </FormField>
-                    <FormField label="Time">
-                      <div className="overflow-hidden w-full">
-                        <FormInput type="time" value={upTime} onChange={e => setUpTime(e.target.value)} className="w-full min-w-0 appearance-none min-h-[2.5rem]" />
-                      </div>
-                    </FormField>
-                  </div>
+                  <FormField label="Date" required>
+                    <FormInput type="date" value={upDate} onChange={e => setUpDate(e.target.value)} className="w-full appearance-none min-h-[2.5rem]" />
+                  </FormField>
+                  <FormField label="Time">
+                    <FormInput type="time" value={upTime} onChange={e => setUpTime(e.target.value)} className="w-full appearance-none min-h-[2.5rem]" />
+                  </FormField>
                   <FormField label="What do you want to discuss?" required>
                     <FormTextarea value={upDiscussion} onChange={e => setUpDiscussion(e.target.value)} placeholder="Questions, concerns, updates to share…" />
                   </FormField>
                   <FormField label="Any prep needed? (optional)">
                     <FormTextarea value={upPrep} onChange={e => setUpPrep(e.target.value)} placeholder="Bring results, fast beforehand…" />
                   </FormField>
-                  <Button onClick={handleAddUpcoming} className="w-full" disabled={!upProvider || !upDate || !upDiscussion}>Save</Button>
+                  <Button onClick={handleSaveUpcoming} className="w-full" disabled={!upProvider || !upDate || !upDiscussion}>
+                    {editingId ? 'Update' : 'Save'}
+                  </Button>
                 </div>
               </>
             ) : (
               <>
                 <SheetHeader className="mb-4">
-                  <SheetTitle>Add Past Appointment</SheetTitle>
+                  <SheetTitle>{editingId ? 'Edit Appointment' : 'Add Past Appointment'}</SheetTitle>
                 </SheetHeader>
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-3">
@@ -1739,7 +2127,7 @@ const AppointmentsTab = () => {
                     </FormField>
                   </div>
                   <FormField label="Date" required>
-                    <FormInput type="date" value={pastDate} onChange={e => setPastDate(e.target.value)} />
+                    <FormInput type="date" value={pastDate} onChange={e => setPastDate(e.target.value)} className="appearance-none min-h-[2.5rem]" />
                   </FormField>
                   <FormField label="Summary" required>
                     <FormTextarea value={pastSummary} onChange={e => setPastSummary(e.target.value)} placeholder="What was discussed…" />
@@ -1749,13 +2137,15 @@ const AppointmentsTab = () => {
                   </FormField>
                   <div className="grid grid-cols-2 gap-3">
                     <FormField label="Follow-up date (optional)">
-                      <FormInput type="date" value={pastFollowup} onChange={e => setPastFollowup(e.target.value)} />
+                      <FormInput type="date" value={pastFollowup} onChange={e => setPastFollowup(e.target.value)} className="appearance-none min-h-[2.5rem]" />
                     </FormField>
                     <FormField label="New diagnosis/referral (optional)">
                       <FormInput value={pastNewDx} onChange={e => setPastNewDx(e.target.value)} placeholder="If any" />
                     </FormField>
                   </div>
-                  <Button onClick={handleAddPast} className="w-full" disabled={!pastProvider || !pastDate || !pastSummary}>Save</Button>
+                  <Button onClick={handleSavePast} className="w-full" disabled={!pastProvider || !pastDate || !pastSummary}>
+                    {editingId ? 'Update' : 'Save'}
+                  </Button>
                 </div>
               </>
             )}
@@ -1766,17 +2156,20 @@ const AppointmentsTab = () => {
       <PillToggle
         options={[{ value: 'upcoming', label: 'Upcoming' }, { value: 'past', label: 'Past' }]}
         value={sub}
-        onChange={v => { setSub(v as typeof sub); setExpandedId(null); }}
+        onChange={v => { setSub(v as typeof sub); setExpandedId(null); setDeleteConfirmId(null); }}
       />
 
-      {sub === 'upcoming' && (
+      {loading ? (
+        <div className="space-y-2">
+          <Skeleton className="h-16" />
+          <Skeleton className="h-16" />
+        </div>
+      ) : sub === 'upcoming' ? (
         sortedUpcoming.length === 0 ? (
           <EmptyState message="No upcoming appointments." />
         ) : (
           <div className="space-y-2">
             {sortedUpcoming.map(apt => {
-              const dt = parseISO(apt.date_time);
-              const hasTime = apt.date_time.includes('T');
               const expanded = expandedId === apt.id;
               return (
                 <div key={apt.id} className="rounded-lg border bg-card p-4">
@@ -1785,38 +2178,55 @@ const AppointmentsTab = () => {
                       <p className="text-sm font-semibold">{apt.provider}</p>
                       {apt.specialty && <p className="text-xs text-muted-foreground">{apt.specialty}</p>}
                       <p className="text-xs font-medium text-primary mt-1">
-                        {format(dt, 'EEE d MMM')}{hasTime && ` at ${format(dt, 'HH:mm')}`}
+                        {format(parseISO(apt.date), 'EEE d MMM')}
+                        {apt.time && ` at ${apt.time}`}
                       </p>
-                      {!expanded && (
-                        <p className="mt-1.5 text-xs text-muted-foreground line-clamp-2">{apt.discussion}</p>
+                      {!expanded && apt.what_to_discuss && (
+                        <p className="mt-1.5 text-xs text-muted-foreground line-clamp-2">{apt.what_to_discuss}</p>
                       )}
                     </div>
-                    <button onClick={() => setExpandedId(expanded ? null : apt.id)} className="text-muted-foreground hover:text-foreground shrink-0 mt-0.5">
+                    <button
+                      onClick={() => { setExpandedId(expanded ? null : apt.id); setDeleteConfirmId(null); }}
+                      className="text-muted-foreground hover:text-foreground shrink-0 mt-0.5"
+                    >
                       <ChevronDown className={cn('h-4 w-4 transition-transform', expanded && 'rotate-180')} />
                     </button>
                   </div>
                   {expanded && (
-                    <div className="mt-2 border-t pt-2 space-y-2">
-                      <div>
-                        <p className="text-[10px] font-semibold uppercase text-muted-foreground mb-0.5">To discuss</p>
-                        <p className="text-xs text-foreground/90 leading-relaxed">{apt.discussion}</p>
+                    <>
+                      <div className="mt-2 border-t pt-2 space-y-2">
+                        {apt.what_to_discuss && (
+                          <div>
+                            <p className="text-[10px] font-semibold uppercase text-muted-foreground mb-0.5">To discuss</p>
+                            <p className="text-xs text-foreground/90 leading-relaxed">{apt.what_to_discuss}</p>
+                          </div>
+                        )}
+                        {apt.prep_needed && (
+                          <div>
+                            <p className="text-[10px] font-semibold uppercase text-muted-foreground mb-0.5">Prep</p>
+                            <p className="text-xs text-muted-foreground">{apt.prep_needed}</p>
+                          </div>
+                        )}
                       </div>
-                      {apt.prep && (
-                        <div>
-                          <p className="text-[10px] font-semibold uppercase text-muted-foreground mb-0.5">Prep</p>
-                          <p className="text-xs text-muted-foreground">{apt.prep}</p>
-                        </div>
+                      {deleteConfirmId === apt.id ? (
+                        <DeleteConfirm
+                          onCancel={() => setDeleteConfirmId(null)}
+                          onConfirm={() => handleDelete(apt.id)}
+                        />
+                      ) : (
+                        <CardActions
+                          onEdit={() => handleEditUpcoming(apt)}
+                          onDelete={() => setDeleteConfirmId(apt.id)}
+                        />
                       )}
-                    </div>
+                    </>
                   )}
                 </div>
               );
             })}
           </div>
         )
-      )}
-
-      {sub === 'past' && (
+      ) : (
         sortedPast.length === 0 ? (
           <EmptyState message="No past appointments logged yet." />
         ) : (
@@ -1826,7 +2236,7 @@ const AppointmentsTab = () => {
               return (
                 <div key={apt.id} className="rounded-lg border bg-card">
                   <button
-                    onClick={() => setExpandedId(expanded ? null : apt.id)}
+                    onClick={() => { setExpandedId(expanded ? null : apt.id); setDeleteConfirmId(null); }}
                     className="w-full p-4 text-left"
                   >
                     <div className="flex items-start justify-between gap-2">
@@ -1834,7 +2244,7 @@ const AppointmentsTab = () => {
                         <p className="text-sm font-semibold">{apt.provider}</p>
                         {apt.specialty && <p className="text-xs text-muted-foreground">{apt.specialty}</p>}
                         <p className="text-xs text-muted-foreground mt-0.5">{format(parseISO(apt.date), 'dd MMM yyyy')}</p>
-                        {!expanded && (
+                        {!expanded && apt.summary && (
                           <p className="mt-1.5 text-xs text-muted-foreground line-clamp-2">{apt.summary}</p>
                         )}
                       </div>
@@ -1843,10 +2253,12 @@ const AppointmentsTab = () => {
                   </button>
                   {expanded && (
                     <div className="border-t px-4 pb-4 pt-3 space-y-2">
-                      <div>
-                        <p className="text-[10px] font-semibold uppercase text-muted-foreground mb-0.5">Summary</p>
-                        <p className="text-xs text-foreground/90 leading-relaxed">{apt.summary}</p>
-                      </div>
+                      {apt.summary && (
+                        <div>
+                          <p className="text-[10px] font-semibold uppercase text-muted-foreground mb-0.5">Summary</p>
+                          <p className="text-xs text-foreground/90 leading-relaxed">{apt.summary}</p>
+                        </div>
+                      )}
                       {apt.action_items && (
                         <div>
                           <p className="text-[10px] font-semibold uppercase text-muted-foreground mb-0.5">Action items</p>
@@ -1864,6 +2276,17 @@ const AppointmentsTab = () => {
                           <p className="text-[10px] font-semibold uppercase text-muted-foreground mb-0.5">New diagnosis / referral</p>
                           <p className="text-xs text-muted-foreground">{apt.new_diagnosis}</p>
                         </div>
+                      )}
+                      {deleteConfirmId === apt.id ? (
+                        <DeleteConfirm
+                          onCancel={() => setDeleteConfirmId(null)}
+                          onConfirm={() => handleDelete(apt.id)}
+                        />
+                      ) : (
+                        <CardActions
+                          onEdit={() => handleEditPast(apt)}
+                          onDelete={() => setDeleteConfirmId(apt.id)}
+                        />
                       )}
                     </div>
                   )}
@@ -1891,6 +2314,8 @@ const TABS = [
 ];
 
 const Records = () => {
+  const { user } = useAuth();
+  const userId = user?.id ?? '';
   const [activeTab, setActiveTab] = useState('health_history');
 
   return (
@@ -1912,12 +2337,12 @@ const Records = () => {
         ))}
       </div>
 
-      {activeTab === 'health_history' && <HealthHistoryTab />}
-      {activeTab === 'labs' && <LabsTab />}
-      {activeTab === 'scans' && <ScansTab />}
-      {activeTab === 'medications' && <MedicationsTab />}
-      {activeTab === 'supplements' && <SupplementsTab />}
-      {activeTab === 'appointments' && <AppointmentsTab />}
+      {activeTab === 'health_history' && <HealthHistoryTab userId={userId} />}
+      {activeTab === 'labs' && <LabsTab userId={userId} />}
+      {activeTab === 'scans' && <ScansTab userId={userId} />}
+      {activeTab === 'medications' && <MedicationsTab userId={userId} />}
+      {activeTab === 'supplements' && <SupplementsTab userId={userId} />}
+      {activeTab === 'appointments' && <AppointmentsTab userId={userId} />}
     </div>
   );
 };
