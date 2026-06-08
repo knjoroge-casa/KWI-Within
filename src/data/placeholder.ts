@@ -231,17 +231,6 @@ export const quotes = [
   { text: "Tracking isn't about control. It's about understanding.", author: "KWI" },
 ];
 
-export const symptomFrequencyData = [
-  { name: 'Brain fog', count: 14 },
-  { name: 'Joint stiffness', count: 12 },
-  { name: 'Fatigue', count: 11 },
-  { name: 'Night sweats', count: 6 },
-  { name: 'Pelvic heaviness', count: 8 },
-  { name: 'Bloating', count: 7 },
-  { name: 'Anxiety', count: 9 },
-  { name: 'Headache', count: 5 },
-].sort((a, b) => b.count - a.count);
-
 // ── 90-day chart data ──
 
 const energyBasePattern = [3,4,2,3,4,5,3,2,3,4,4,3,2,1,2,3,4,4,5,3,3,2,4,3,3,4,2,3,4,5,3,2,3,4,3,2,4,3,3,4,5,3];
@@ -282,15 +271,6 @@ export const capacityWeeklyData = weekPatterns.map((w, i) => ({
   week: format(subDays(today, (12 - i) * 7), 'MMM d'),
   ...w,
 }));
-
-export const symptomFrequencyWithTrends: Array<{ name: string; count: number; trend: 'up' | 'stable' | 'down' }> = [
-  { name: 'Brain fog', count: 14, trend: 'up' },
-  { name: 'Joint stiffness', count: 12, trend: 'stable' },
-  { name: 'Fatigue', count: 11, trend: 'down' },
-  { name: 'Anxiety', count: 9, trend: 'up' },
-  { name: 'Pelvic heaviness', count: 8, trend: 'stable' },
-  { name: 'Bloating', count: 7, trend: 'down' },
-];
 
 // ── Placeholder watch list & thoughts ──
 
