@@ -1,4 +1,4 @@
-import { UserProfile, DailyLog, MedicalRecord, AIInsight, ThoughtEntry, WatchListItem, Appointment, PastReport } from './types';
+import { UserProfile, DailyLog, MedicalRecord, AIInsight, WatchListItem, Appointment, PastReport } from './types';
 import { subDays, format } from 'date-fns';
 
 const today = new Date();
@@ -291,35 +291,6 @@ export const placeholderWatchList: WatchListItem[] = [
   },
 ];
 
-export const placeholderThoughts: ThoughtEntry[] = [
-  {
-    id: 'thought-1',
-    week_key: '2026-W13',
-    prompt_index: 0,
-    prompt_text: "What has your body surprised you with lately?",
-    text: "I was genuinely surprised by how much better I felt after that long walk on Saturday. I kept expecting to feel worse afterwards but I didn't — I actually had more energy that evening. Maybe gentle movement really does help more than rest sometimes.",
-    date: d(35),
-    include_in_report: false,
-  },
-  {
-    id: 'thought-2',
-    week_key: '2026-W14',
-    prompt_index: 1,
-    prompt_text: "Is there something you've been ignoring that keeps coming back?",
-    text: "The fatigue in the afternoons. I keep telling myself it's just because I didn't sleep well, but it's been happening every week for months now. I think I need to actually talk to Dr Chen about it instead of just logging it.",
-    date: d(28),
-    include_in_report: true,
-  },
-  {
-    id: 'thought-3',
-    week_key: '2026-W16',
-    prompt_index: 3,
-    prompt_text: "What's one thing you did this week that was genuinely just for you?",
-    text: "The 45-minute yoga session on Thursday morning before anyone else was up. No interruptions. Just me and the mat. It felt indulgent in the best way.",
-    date: d(14),
-    include_in_report: false,
-  },
-];
 
 export const placeholderAppointments: Appointment[] = [
   {
